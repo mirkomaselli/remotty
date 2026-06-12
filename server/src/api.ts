@@ -5,6 +5,8 @@ import type {
   ChatEventsPage,
   CreateSessionRequest,
   HealthResponse,
+  OpencodeAgentsResponse,
+  OpencodePermissionLevel,
   OpencodeModelsResponse,
 } from '@remotty/shared';
 import { isDirectory, toServerConfig } from './config.js';
@@ -117,6 +119,61 @@ export function createApiRouter(deps: {
     }),
   );
 
+  // Agenti utilizzabili come principale: built-in build/plan e custom primary/all.
+  router.get(
+    '/opencode/agents',
+    ah(async (req, res) => {
+      if (!config.clis.opencode) {
+        res.status(400).json({ error: 'opencode CLI non disponibile' });
+        return;
+      }
+      await ocServer.ensureStarted();
+      const cwd = typeof req.query.cwd === 'string' && req.query.cwd ? req.query.cwd : null;
+      const url = `${ocServer.baseUrl}/agent${cwd ? `?directory=${encodeURIComponent(cwd)}` : ''}`;
+      const r = await fetch(url);
+      if (!r.ok) {
+        res.status(502).json({ error: `opencode HTTP ${r.status}` });
+        return;
+      }
+      const data = (await r.json()) as Array<{
+        name?: string;
+        description?: string;
+        mode?: string;
+        native?: boolean;
+        hidden?: boolean;
+        permission?: Array<{
+          permission?: string;
+          pattern?: string;
+          action?: 'allow' | 'ask' | 'deny';
+        }>;
+      }>;
+      const body: OpencodeAgentsResponse = {
+        agents: (Array.isArray(data) ? data : [])
+          .filter(
+            (agent) =>
+              typeof agent.name === 'string' &&
+              agent.name.length > 0 &&
+              agent.hidden !== true &&
+              (agent.mode === 'primary' || agent.mode === 'all'),
+          )
+          .map((agent) => ({
+            name: agent.name as string,
+            ...(typeof agent.description === 'string' && agent.description
+              ? { description: agent.description }
+              : {}),
+            mode: agent.mode as 'primary' | 'all',
+            native: agent.native === true,
+            permissions: {
+              edit: summarizePermission(agent.permission, 'edit'),
+              bash: summarizePermission(agent.permission, 'bash'),
+            },
+          }))
+          .sort(compareAgents),
+      };
+      res.json(body);
+    }),
+  );
+
   router.get('/sessions', (_req, res) => res.json(store.getSessions()));
 
   router.post('/sessions', (req, res) => {
@@ -224,6 +281,32 @@ function compareVariants(a: string, b: string): number {
   const ai = VARIANT_ORDER.indexOf(a);
   const bi = VARIANT_ORDER.indexOf(b);
   if (ai === -1 && bi === -1) return a.localeCompare(b);
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
+}
+
+function summarizePermission(
+  rules: Array<{ permission?: string; pattern?: string; action?: 'allow' | 'ask' | 'deny' }> | undefined,
+  permission: string,
+): OpencodePermissionLevel {
+  let broad: 'allow' | 'ask' | 'deny' | undefined;
+  let hasSpecific = false;
+  for (const rule of rules ?? []) {
+    if (rule.permission !== '*' && rule.permission !== permission) continue;
+    if (!rule.action) continue;
+    if (rule.pattern === '*' || rule.pattern === undefined) broad = rule.action;
+    else if (rule.permission === permission) hasSpecific = true;
+  }
+  if (hasSpecific) return 'mixed';
+  return broad ?? 'unknown';
+}
+
+function compareAgents(a: { name: string }, b: { name: string }): number {
+  const order = ['build', 'plan'];
+  const ai = order.indexOf(a.name);
+  const bi = order.indexOf(b.name);
+  if (ai === -1 && bi === -1) return a.name.localeCompare(b.name);
   if (ai === -1) return 1;
   if (bi === -1) return -1;
   return ai - bi;

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { OpencodeModelsResponse } from '@remotty/shared';
+import type {
+  OpencodeAgentEntry,
+  OpencodeAgentsResponse,
+  OpencodeModelsResponse,
+  OpencodePermissionLevel,
+} from '@remotty/shared';
 import { ChatSocket } from '../lib/chat-socket';
 import { useStore, type ConnState } from '../store';
 import {
@@ -40,11 +45,15 @@ export default function Chat() {
   const [conn, setConn] = useState<ConnState>('connecting');
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelSheetOpen, setModelSheetOpen] = useState(false);
+  const [agentSheetOpen, setAgentSheetOpen] = useState(false);
   const [models, setModels] = useState<OpencodeModelsResponse | null>(null);
   const [modelsErr, setModelsErr] = useState<string | null>(null);
+  const [agents, setAgents] = useState<OpencodeAgentsResponse | null>(null);
+  const [agentsErr, setAgentsErr] = useState<string | null>(null);
   // undefined = nessuna scelta ottimistica in corso (null è un valore valido: "default").
   const [optimisticModel, setOptimisticModel] = useState<string | null | undefined>(undefined);
   const [optimisticVariant, setOptimisticVariant] = useState<string | null | undefined>(undefined);
+  const [optimisticAgent, setOptimisticAgent] = useState<string | null | undefined>(undefined);
   const [text, setText] = useState('');
   const [atBottom, setAtBottom] = useState(true);
   const sockRef = useRef<ChatSocket | null>(null);
@@ -59,6 +68,8 @@ export default function Chat() {
     optimisticModel !== undefined ? optimisticModel : (meta?.opencodeModel ?? null);
   const currentVariant =
     optimisticVariant !== undefined ? optimisticVariant : (meta?.opencodeVariant ?? null);
+  const currentAgent =
+    optimisticAgent !== undefined ? optimisticAgent : (meta?.opencodeAgent ?? null);
   const busy = running || chat.status === 'waiting_permission' || conn !== 'open';
 
   useWakeLock(running || chat.status === 'waiting_permission');
@@ -86,6 +97,7 @@ export default function Chat() {
   // Il server è la fonte di verità: azzera l'ottimismo quando arriva la meta persistita.
   useEffect(() => setOptimisticModel(undefined), [meta?.opencodeModel]);
   useEffect(() => setOptimisticVariant(undefined), [meta?.opencodeVariant]);
+  useEffect(() => setOptimisticAgent(undefined), [meta?.opencodeAgent]);
 
   // Auto-scroll in fondo se l'utente non ha scrollato verso l'alto.
   useEffect(() => {
@@ -137,6 +149,23 @@ export default function Chat() {
     if (!sockRef.current?.setVariant(value)) return;
     setOptimisticVariant(value);
     setModelSheetOpen(false);
+  };
+
+  const openAgentSheet = (): void => {
+    setMenuOpen(false);
+    setAgentSheetOpen(true);
+    if (agents || !meta) return;
+    setAgentsErr(null);
+    api.opencodeAgents(meta.cwd).then(
+      (response) => setAgents(response),
+      (error) => setAgentsErr(error instanceof Error ? error.message : 'Failed to load agents'),
+    );
+  };
+
+  const selectAgent = (value: string | null): void => {
+    if (!sockRef.current?.setAgent(value)) return;
+    setOptimisticAgent(value);
+    setAgentSheetOpen(false);
   };
 
   const compactCtx = (): void => {
@@ -204,6 +233,16 @@ export default function Chat() {
 
         {menuOpen && (
           <div className="absolute top-14 right-2 z-30 overflow-hidden rounded-xl border border-white/10 bg-raised shadow-xl">
+            <button
+              onClick={openAgentSheet}
+              disabled={conn !== 'open'}
+              className="flex min-h-11 w-52 items-center justify-between gap-3 px-4 text-sm text-zinc-200 active:bg-white/5 disabled:opacity-40"
+            >
+              <span>Agent</span>
+              <span className="max-w-28 truncate text-xs text-zinc-500">
+                {currentAgent ?? 'default'}
+              </span>
+            </button>
             <button
               onClick={compactCtx}
               disabled={busy}
@@ -352,6 +391,39 @@ export default function Chat() {
         )}
       </Sheet>
 
+      {/* Selettore agente primario OpenCode */}
+      <Sheet
+        open={agentSheetOpen}
+        title="Agent"
+        onClose={() => setAgentSheetOpen(false)}
+      >
+        {agentsErr && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {agentsErr}
+          </div>
+        )}
+        {!agentsErr && !agents && (
+          <div className="py-6 text-center text-sm text-zinc-500">loading agents…</div>
+        )}
+        {agents && (
+          <div className="overflow-hidden rounded-xl border border-white/5">
+            <AgentRow
+              agent={null}
+              selected={currentAgent === null}
+              onClick={() => selectAgent(null)}
+            />
+            {agents.agents.map((agent) => (
+              <AgentRow
+                key={agent.name}
+                agent={agent}
+                selected={currentAgent === agent.name}
+                onClick={() => selectAgent(agent.name)}
+              />
+            ))}
+          </div>
+        )}
+      </Sheet>
+
       {/* Composer */}
       <div
         className="border-t border-white/5 bg-surface px-3 pt-2"
@@ -491,6 +563,75 @@ function VariantChip({
     >
       {label}
     </button>
+  );
+}
+
+function AgentRow({
+  agent,
+  selected,
+  onClick,
+}: {
+  agent: OpencodeAgentEntry | null;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const name = agent?.name ?? 'OpenCode default';
+  const description =
+    agent?.description ??
+    'Use the default primary agent configured by OpenCode (normally build).';
+  return (
+    <button
+      onClick={onClick}
+      className="w-full border-b border-white/5 bg-raised px-4 py-3 text-left last:border-b-0 active:bg-white/5"
+    >
+      <span className="flex items-center gap-3">
+        <span className="min-w-0 flex-1">
+          <span
+            className={`block text-sm font-semibold ${
+              selected ? 'text-accent' : 'text-zinc-200'
+            }`}
+          >
+            {name}
+          </span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
+            {description}
+          </span>
+          {agent && (
+            <span className="mt-2 flex flex-wrap gap-1.5">
+              <PermissionBadge label="edit" level={agent.permissions.edit} />
+              <PermissionBadge label="bash" level={agent.permissions.bash} />
+              {!agent.native && (
+                <span className="rounded-full bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-300">
+                  custom
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+        {selected && <IconCheck className="h-4 w-4 shrink-0 text-accent" />}
+      </span>
+    </button>
+  );
+}
+
+function PermissionBadge({
+  label,
+  level,
+}: {
+  label: string;
+  level: OpencodePermissionLevel;
+}) {
+  const colors: Record<OpencodePermissionLevel, string> = {
+    allow: 'bg-emerald-400/10 text-emerald-300',
+    ask: 'bg-amber-400/10 text-amber-300',
+    deny: 'bg-red-400/10 text-red-300',
+    mixed: 'bg-violet-400/10 text-violet-300',
+    unknown: 'bg-white/5 text-zinc-400',
+  };
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${colors[level]}`}>
+      {label}: {level}
+    </span>
   );
 }
 

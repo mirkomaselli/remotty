@@ -112,6 +112,10 @@ export class ChatSocket {
     return this.send({ type: 'set_variant', variant });
   }
 
+  setAgent(agent: string | null): boolean {
+    return this.send({ type: 'set_agent', agent });
+  }
+
   clearContext(): boolean {
     return this.send({ type: 'clear_context' });
   }

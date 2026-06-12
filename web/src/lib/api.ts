@@ -5,6 +5,7 @@ import type {
   BrowseResult,
   ChatEventsPage,
   CreateSessionRequest,
+  OpencodeAgentsResponse,
   OpencodeModelsResponse,
   ProjectInfo,
   ServerConfig,
@@ -70,5 +71,9 @@ export const api = {
   opencodeModels: (cwd?: string) =>
     req<OpencodeModelsResponse>(
       `/api/opencode/models${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''}`,
+    ),
+  opencodeAgents: (cwd?: string) =>
+    req<OpencodeAgentsResponse>(
+      `/api/opencode/agents${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''}`,
     ),
 };

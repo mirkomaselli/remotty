@@ -256,7 +256,45 @@ async function main() {
       record('set_variant: nessuna variant disponibile, test saltato', true);
     }
 
-    // 9. clear vero: nuova sessione opencode al posto della vecchia
+    // 9. agenti primari: niente subagent/hidden, build e plan disponibili.
+    const agentsRes = await json('GET', `/api/opencode/agents?cwd=${encodeURIComponent(TEST_CWD)}`);
+    const agents = agentsRes.data?.agents ?? [];
+    assert(
+      agentsRes.status === 200 &&
+        agents.some((agent) => agent.name === 'build') &&
+        agents.some((agent) => agent.name === 'plan') &&
+        agents.every((agent) => agent.mode === 'primary' || agent.mode === 'all') &&
+        agents.every((agent) => agent.name !== 'compaction' && agent.name !== 'title'),
+      'GET /api/opencode/agents',
+      `agents=${agents.map((agent) => agent.name).join(',')}`,
+    );
+    const buildAgent = agents.find((agent) => agent.name === 'build');
+    assert(
+      buildAgent?.permissions?.edit === 'allow' && buildAgent?.permissions?.bash === 'allow',
+      'build espone accesso edit/bash',
+      JSON.stringify(buildAgent?.permissions),
+    );
+
+    cut = lastSeqOf(events);
+    ws.send(JSON.stringify({ type: 'set_agent', agent: 'build' }));
+    await collectUntil(
+      ws,
+      events,
+      (ev) =>
+        evsAfter(ev, cut).some(
+          (e) => e.type === 'meta' && e.meta?.opencodeAgent === 'build',
+        ),
+      10_000,
+      'meta con opencodeAgent',
+    );
+    const agentMeta = await json('GET', `/api/sessions/${id}`);
+    assert(
+      agentMeta.data?.opencodeAgent === 'build',
+      'set_agent → meta persistita',
+      agentMeta.data?.opencodeAgent,
+    );
+
+    // 10. clear vero: nuova sessione opencode al posto della vecchia
     const prevOcId = meta.data.opencodeSessionId;
     cut = lastSeqOf(events);
     ws.send(JSON.stringify({ type: 'clear_context' }));
@@ -275,7 +313,7 @@ async function main() {
       `${prevOcId} → ${metaAfterClear.data?.opencodeSessionId}`,
     );
 
-    // 10. turno dopo il clear (usa modello e variant selezionati col picker)
+    // 11. turno dopo il clear (usa modello, variant e agente selezionati)
     cut = lastSeqOf(events);
     ws.send(
       JSON.stringify({
@@ -300,7 +338,7 @@ async function main() {
       postClearErrors.map((e) => e.message).join(' | '),
     );
 
-    // 11. compact: notice + summarize fino a idle
+    // 12. compact: notice + summarize fino a idle
     cut = lastSeqOf(events);
     ws.send(JSON.stringify({ type: 'compact_context' }));
     await collectUntil(
@@ -322,7 +360,7 @@ async function main() {
     );
     assert(compactEvs.some((e) => e.type === 'notice'), 'compact_context → notice');
 
-    // 12. replay lossless da una seconda connessione
+    // 13. replay lossless da una seconda connessione
     const ws2 = await wsConnect(id);
     const replay = [];
     ws2.send(JSON.stringify({ type: 'attach', afterSeq: 0 }));
@@ -333,7 +371,7 @@ async function main() {
     ws2.close();
     ws.close();
 
-    // 13. delete
+    // 14. delete
     const del = await json('DELETE', `/api/sessions/${id}`);
     assert(del.status === 204, 'DELETE sessione → 204', `status=${del.status}`);
   } catch (err) {

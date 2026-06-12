@@ -43,6 +43,7 @@ export class SessionManager {
       meta.agent = req.agent;
       meta.opencodeSessionId = null;
       meta.opencodeVariant = null;
+      meta.opencodeAgent = null;
     } else if (req.command) {
       meta.command = req.command;
     }

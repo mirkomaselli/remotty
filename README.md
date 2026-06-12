@@ -119,6 +119,9 @@ talks to it over HTTP + SSE; sessions are scoped per project folder.
   in OpenCode and the reasoning variants supported by the selected model (for example low, high
   or max). Both choices are persisted per session and can be changed mid-conversation. Model
   priority: in-chat choice → `REMOTTY_OPENCODE_MODEL` → OpenCode default.
+- **Agent picker**: switch between OpenCode's primary agents (`build`, `plan`) and project/global
+  custom primary agents. The picker shows their effective edit and shell permission levels;
+  hidden system agents and subagents are not selectable.
 - **Context controls** (chat ⋮ menu): *clear context* starts a fresh agent session under the
   hood (UI history stays), *compact context* summarizes the conversation to free context
   (like `/compact`).

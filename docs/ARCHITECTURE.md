@@ -52,6 +52,7 @@ dev server proxies `/api` (HTTP + WS) to the server.
 | GET | `/api/projects` | → `ProjectInfo[]` (recent, from store, most recent first) |
 | POST | `/api/projects` | `{ path }` → `ProjectInfo` (validates dir exists; upserts into recents) |
 | GET | `/api/opencode/models?cwd=<abs>` | → `OpencodeModelsResponse` (providers/models from `opencode serve`, starts it if needed) |
+| GET | `/api/opencode/agents?cwd=<abs>` | → selectable primary agents + edit/bash permission summary |
 | GET | `/api/sessions` | → `SessionMeta[]` |
 | POST | `/api/sessions` | `CreateSessionRequest` → `SessionMeta` |
 | GET | `/api/sessions/:id` | → `SessionMeta` |
@@ -78,8 +79,8 @@ JSONL log (`data/chat/<sessionId>.jsonl`) before sending. On attach the client s
 (mobile browsers kill sockets on screen lock — this is the norm, not the exception).
 
 Client → server: `attach`, `user_message`, `permission_response`, `interrupt`, `set_model`,
-`set_variant`, `clear_context`, `compact_context`, `ping` (server replies `pong`, outside the
-seq stream).
+`set_variant`, `set_agent`, `clear_context`, `compact_context`, `ping` (server replies `pong`,
+outside the seq stream).
 
 Server → client: `ChatEventEnvelope = { seq, ev: ChatEvent }` where ChatEvent is one of:
 `status`, `meta`, `user_message` (echo), `text_delta`, `assistant_message` (finalized blocks:
@@ -128,6 +129,9 @@ server.
 - **Model selection**: `set_model` ('providerID/modelID' or null) and `set_variant` are persisted
   per session. Variants come from the selected model's OpenCode metadata and reset when the model
   changes; prompt model priority is user choice → env `REMOTTY_OPENCODE_MODEL` → OpenCode default.
+- **Agent selection**: `set_agent` persists a primary OpenCode agent per session and sends it on
+  every prompt. The picker includes non-hidden `primary`/`all` agents only; subagents and hidden
+  system agents are excluded.
 - **Context ops**: `clear_context` creates a fresh OpenCode session under the hood (UI history
   stays, a `notice` marks the cut); `compact_context` calls OpenCode's summarize.
 
@@ -167,7 +171,8 @@ Views:
    and result, monospace, result truncated with "show more"); permission requests as a sticky
    bottom sheet with Allow / Deny (+ "always allow" suggestion buttons from `opencode_always`);
    composer (auto-growing textarea, send button, Stop button while `running`); header: title,
-   status dot, model/reasoning picker, kebab → compact/clear context, delete session. Cost/turns shown
+   status dot, model/reasoning picker, kebab → agent picker, compact/clear context, delete session.
+   Cost/turns shown
    after each `result`.
 4. **Terminal** — full-bleed xterm (`@xterm/xterm` 6.0.0 + `@xterm/addon-fit`; DOM renderer on
    iOS, WebGL elsewhere via feature detect), extra-keys bar: Esc, Tab, sticky-Ctrl, ↑ ↓ ← →,

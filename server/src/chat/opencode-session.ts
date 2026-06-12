@@ -113,6 +113,9 @@ export class OpenCodeChatSession extends BaseChatSession {
       case 'set_variant':
         this.setVariant(msg.variant);
         break;
+      case 'set_agent':
+        this.setAgent(msg.agent);
+        break;
       case 'clear_context':
         void this.clearContext();
         break;
@@ -158,6 +161,8 @@ export class OpenCodeChatSession extends BaseChatSession {
       if (model) body['model'] = model;
       const variant = await this.selectedVariant(model);
       if (variant) body['variant'] = variant;
+      const agent = await this.selectedAgent();
+      if (agent) body['agent'] = agent;
       await this.ocFetch(
         'POST',
         `/session/${encodeURIComponent(this.meta.opencodeSessionId)}/prompt_async`,
@@ -228,6 +233,19 @@ export class OpenCodeChatSession extends BaseChatSession {
     this.emit({ type: 'meta', meta: this.meta });
   }
 
+  private setAgent(agent: string | null): void {
+    if (
+      agent !== null &&
+      (agent.length === 0 || agent.length > 128 || !/^[a-zA-Z0-9._-]+$/.test(agent))
+    ) {
+      this.emit({ type: 'error', message: 'Invalid OpenCode agent' });
+      return;
+    }
+    this.meta.opencodeAgent = agent;
+    this.onMetaChanged(this.meta);
+    this.emit({ type: 'meta', meta: this.meta });
+  }
+
   /** Modello da inviare col prompt: scelta utente → env REMOTTY_OPENCODE_MODEL → default OpenCode. */
   private selectedModel(): { providerID: string; modelID: string } | null {
     const raw = this.meta.opencodeModel ?? this.config.opencodeModel;
@@ -264,6 +282,31 @@ export class OpenCodeChatSession extends BaseChatSession {
       throw new Error(`Model variant "${variant}" is not available for the selected model`);
     }
     return variant;
+  }
+
+  /** Verifica che l'agente esista ancora e sia utilizzabile come agente principale. */
+  private async selectedAgent(): Promise<string | null> {
+    const selected = this.meta.opencodeAgent;
+    if (!selected) return null;
+    const res = await this.ocFetch('GET', '/agent');
+    const agents = (await res.json()) as Array<{
+      name?: string;
+      mode?: string;
+      hidden?: boolean;
+    }>;
+    const valid = agents.some(
+      (agent) =>
+        agent.name === selected &&
+        agent.hidden !== true &&
+        (agent.mode === 'primary' || agent.mode === 'all'),
+    );
+    if (!valid) {
+      this.meta.opencodeAgent = null;
+      this.onMetaChanged(this.meta);
+      this.emit({ type: 'meta', meta: this.meta });
+      throw new Error(`OpenCode agent "${selected}" is not available as a primary agent`);
+    }
+    return selected;
   }
 
   /** Primo default dalla mappa `default` di /config/providers (serve a summarize). */

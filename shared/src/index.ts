@@ -30,6 +30,8 @@ export interface SessionMeta {
   opencodeModel?: string | null;
   /** OpenCode: variant del modello (es. high/max), null = default del modello. */
   opencodeVariant?: string | null;
+  /** OpenCode: agente primario scelto dall'utente, null = default OpenCode (build). */
+  opencodeAgent?: string | null;
   totalCostUsd?: number;
   numTurns?: number;
   // terminal-only
@@ -99,6 +101,8 @@ export type ChatClientMsg =
   | { type: 'set_model'; model: string | null }
   /** OpenCode: variant dichiarata dal modello, null = default del modello. */
   | { type: 'set_variant'; variant: string | null }
+  /** OpenCode: agente primario, null = default OpenCode. */
+  | { type: 'set_agent'; agent: string | null }
   /** Clear vero: il contesto dell'agente riparte da zero (la cronologia UI resta). */
   | { type: 'clear_context' }
   /** Compatta il contesto in un riassunto (equivalente di /compact). */
@@ -207,6 +211,23 @@ export interface OpencodeProviderInfo {
 
 export interface OpencodeModelsResponse {
   providers: OpencodeProviderInfo[];
+}
+
+export type OpencodePermissionLevel = 'allow' | 'ask' | 'deny' | 'mixed' | 'unknown';
+
+export interface OpencodeAgentEntry {
+  name: string;
+  description?: string;
+  mode: 'primary' | 'all';
+  native: boolean;
+  permissions: {
+    edit: OpencodePermissionLevel;
+    bash: OpencodePermissionLevel;
+  };
+}
+
+export interface OpencodeAgentsResponse {
+  agents: OpencodeAgentEntry[];
 }
 
 export interface HealthResponse {
