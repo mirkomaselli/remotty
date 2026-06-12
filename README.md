@@ -1,10 +1,15 @@
 # remotty
 
-<p align="center">
-  <img src="docs/screenshots/home.png" width="250" alt="Home — list of chat and terminal sessions" />
-  <img src="docs/screenshots/chat.png" width="250" alt="Chat — tool-call cards and an Allow / Deny permission prompt" />
-  <img src="docs/screenshots/terminal.png" width="250" alt="Terminal — xterm with the extra-keys bar" />
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/home.png" width="240" alt="Home — list of chat and terminal sessions" /><br /><sub><b>Home</b> · session list</sub></td>
+    <td align="center"><img src="docs/screenshots/new-session.png" width="240" alt="New session — choose Chat (OpenCode) or Terminal" /><br /><sub><b>New session</b> · Chat (OpenCode) or Terminal</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/chat.png" width="240" alt="Chat — tool-call cards and an Allow / Deny permission prompt" /><br /><sub><b>Chat</b> · tool cards + permission prompt</sub></td>
+    <td align="center"><img src="docs/screenshots/terminal.png" width="240" alt="Terminal — xterm with the extra-keys bar" /><br /><sub><b>Terminal</b> · xterm + extra-keys bar</sub></td>
+  </tr>
+</table>
 
 Code from your phone. **remotty** is a self-hosted web app that runs on your dev machine and
 wraps terminal coding agents in a mobile-first chat UI — powered by [OpenCode](https://opencode.ai)
