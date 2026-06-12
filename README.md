@@ -87,6 +87,12 @@ Environment variables:
 Over plain HTTP the browser won't offer PWA install or a service worker; the app still works.
 For the full experience see Tailscale below.
 
+### Install on iPhone
+
+iOS does not normally show an automatic PWA installation prompt. Open remotty over **HTTPS in
+Safari**, tap **Share**, then choose **Add to Home Screen** (and enable **Open as Web App** if
+shown). Opening the site inside another app's embedded browser may hide this option.
+
 ## Tailscale (recommended)
 
 With Tailscale on both PC and phone you get valid HTTPS (installable PWA, reliable wake lock and
