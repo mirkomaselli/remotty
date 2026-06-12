@@ -1,0 +1,24 @@
+{
+  "name": "remotty",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @remotty/shared && npm run build -w @remotty/server && npm run build -w @remotty/web",
+    "dev": "npm run build -w @remotty/shared && concurrently -n server,web -c blue,green \"npm run dev -w @remotty/server\" \"npm run dev -w @remotty/web\"",
+    "start": "npm run start -w @remotty/server",
+    "typecheck": "npm run build -w @remotty/shared && npm run typecheck -w @remotty/server && npm run typecheck -w @remotty/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
