@@ -143,7 +143,7 @@ export class OpenCodeChatSession extends BaseChatSession {
         await this.checkProvidersConfigured();
         const res = await this.ocFetch('POST', '/session', { title: this.meta.title });
         const session = (await res.json()) as { id?: string };
-        if (!session.id) throw new Error('risposta inattesa da POST /session');
+        if (!session.id) throw new Error('unexpected response from POST /session');
         this.meta.opencodeSessionId = session.id;
         this.onMetaChanged(this.meta);
       }
@@ -170,14 +170,14 @@ export class OpenCodeChatSession extends BaseChatSession {
       const data = (await res.json()) as { providers?: unknown[] };
       if (Array.isArray(data.providers) && data.providers.length === 0) {
         throw new Error(
-          'Nessun provider configurato in OpenCode. Sul PC esegui "opencode auth login" ' +
-            '(es. Anthropic → Claude Pro/Max) e riprova.',
+          'No provider configured in OpenCode. On the PC run "opencode auth login" ' +
+            '(e.g. Anthropic → Claude Pro/Max) and try again.',
         );
       }
     } catch (err) {
       // Se è il NOSTRO errore rilancia; problemi di rete non bloccano il prompt
       // (fallirà comunque con un ProviderAuthError leggibile).
-      if (err instanceof Error && err.message.startsWith('Nessun provider')) throw err;
+      if (err instanceof Error && err.message.startsWith('No provider')) throw err;
       this.logger.warn('check providers fallito:', errMessage(err));
     }
   }
@@ -196,7 +196,7 @@ export class OpenCodeChatSession extends BaseChatSession {
 
   private setModel(model: string | null): void {
     if (model !== null && !parseModel(model)) {
-      this.emit({ type: 'error', message: 'Formato modello non valido (atteso provider/modello)' });
+      this.emit({ type: 'error', message: 'Invalid model format (expected provider/model)' });
       return;
     }
     this.meta.opencodeModel = model;
@@ -238,7 +238,7 @@ export class OpenCodeChatSession extends BaseChatSession {
    */
   private async clearContext(): Promise<void> {
     if (this.meta.status === 'running' || this.meta.status === 'waiting_permission') {
-      this.emit({ type: 'error', message: 'Attendi la fine del turno prima di ripulire il contesto.' });
+      this.emit({ type: 'error', message: 'Wait for the turn to finish before clearing the context.' });
       return;
     }
     const oldId = this.meta.opencodeSessionId;
@@ -247,37 +247,37 @@ export class OpenCodeChatSession extends BaseChatSession {
         await this.oc.ensureStarted();
         const res = await this.ocFetch('POST', '/session', { title: this.meta.title });
         const session = (await res.json()) as { id?: string };
-        if (!session.id) throw new Error('risposta inattesa da POST /session');
+        if (!session.id) throw new Error('unexpected response from POST /session');
         this.meta.opencodeSessionId = session.id;
         this.onMetaChanged(this.meta);
         this.resetPartTracking();
         void this.ocFetch('DELETE', `/session/${encodeURIComponent(oldId)}`).catch(() => {});
         this.emit({ type: 'meta', meta: this.meta });
       }
-      this.emit({ type: 'notice', text: 'Contesto ripulito: la conversazione riparte da zero.' });
+      this.emit({ type: 'notice', text: 'Context cleared: the conversation starts over from scratch.' });
     } catch (err) {
-      this.emit({ type: 'error', message: `Clear del contesto fallito: ${errMessage(err)}` });
+      this.emit({ type: 'error', message: `Context clear failed: ${errMessage(err)}` });
     }
   }
 
   /** Compatta il contesto in un riassunto (POST /summarize, ex /compact). */
   private async compactContext(): Promise<void> {
     if (this.meta.status === 'running' || this.meta.status === 'waiting_permission') {
-      this.emit({ type: 'error', message: 'Attendi la fine del turno prima di compattare il contesto.' });
+      this.emit({ type: 'error', message: 'Wait for the turn to finish before compacting the context.' });
       return;
     }
     const ocId = this.meta.opencodeSessionId;
     if (!ocId) {
-      this.emit({ type: 'notice', text: 'Niente da compattare: il contesto è vuoto.' });
+      this.emit({ type: 'notice', text: 'Nothing to compact: the context is empty.' });
       return;
     }
     try {
       await this.oc.ensureStarted();
       // summarize richiede providerID/modelID espliciti.
       const model = this.selectedModel() ?? (await this.defaultModel());
-      if (!model) throw new Error('nessun modello disponibile per il riassunto');
+      if (!model) throw new Error('no model available for summarization');
       this.ensureSse();
-      this.emit({ type: 'notice', text: 'Compattazione del contesto in corso…' });
+      this.emit({ type: 'notice', text: 'Compacting the context…' });
       this.turnStartedAt = Date.now();
       this.turnHadError = false;
       this.setStatus('running');
@@ -286,7 +286,7 @@ export class OpenCodeChatSession extends BaseChatSession {
         modelID: model.modelID,
       });
     } catch (err) {
-      this.emit({ type: 'error', message: `Compattazione fallita: ${errMessage(err)}` });
+      this.emit({ type: 'error', message: `Compaction failed: ${errMessage(err)}` });
       this.setStatus('idle');
     }
   }
@@ -334,7 +334,7 @@ export class OpenCodeChatSession extends BaseChatSession {
       this.maybeResumeRunning();
     } catch (err) {
       // OpenCode sta ancora aspettando: lascia la richiesta pendente.
-      this.emit({ type: 'error', message: `Risposta al permesso fallita: ${errMessage(err)}` });
+      this.emit({ type: 'error', message: `Permission response failed: ${errMessage(err)}` });
     }
   }
 
@@ -499,7 +499,7 @@ export class OpenCodeChatSession extends BaseChatSession {
         this.emit({
           type: 'permission_request',
           requestId: id,
-          toolName: typeof p['permission'] === 'string' ? p['permission'] : 'permesso',
+          toolName: typeof p['permission'] === 'string' ? p['permission'] : 'permission',
           input: { ...metadata, patterns: p['patterns'] },
           ...(suggestions.length > 0 ? { suggestions } : {}),
         });
@@ -553,8 +553,8 @@ export class OpenCodeChatSession extends BaseChatSession {
         const error = p['error'] as { name?: string; data?: { message?: string } } | undefined;
         const message =
           error?.name === 'MessageAbortedError'
-            ? 'Interrotto'
-            : error?.data?.message || error?.name || 'Errore OpenCode';
+            ? 'Interrupted'
+            : error?.data?.message || error?.name || 'OpenCode error';
         this.turnHadError = true;
         this.emit({ type: 'error', message });
         // session.idle di norma segue; se non arriva, non restare bloccati su running.
@@ -656,7 +656,7 @@ export class OpenCodeChatSession extends BaseChatSession {
         this.emit({
           type: 'tool_result',
           toolUseId: t.callID,
-          content: cap(state.error ?? 'errore tool'),
+          content: cap(state.error ?? 'tool error'),
           isError: true,
         });
         t.resultEmitted = true;

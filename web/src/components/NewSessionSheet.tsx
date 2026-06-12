@@ -38,7 +38,7 @@ export default function NewSessionSheet({ open, onClose }: NewSessionSheetProps)
       onClose();
       navigate(meta.kind === 'chat' ? `/chat/${meta.id}` : `/term/${meta.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Creazione fallita');
+      setError(e instanceof Error ? e.message : 'Creation failed');
     } finally {
       setBusy(false);
     }
@@ -46,14 +46,14 @@ export default function NewSessionSheet({ open, onClose }: NewSessionSheetProps)
 
   return (
     <>
-      <Sheet open={open} title="Nuova sessione" onClose={onClose}>
+      <Sheet open={open} title="New session" onClose={onClose}>
         <div className="space-y-5">
           {/* Tipo */}
           <div className="grid grid-cols-2 gap-1 rounded-2xl bg-raised p-1">
             {(
               [
                 { k: 'chat', label: 'Chat', icon: <IconChat className="h-4 w-4" /> },
-                { k: 'terminal', label: 'Terminale', icon: <IconTerminal className="h-4 w-4" /> },
+                { k: 'terminal', label: 'Terminal', icon: <IconTerminal className="h-4 w-4" /> },
               ] as const
             ).map(({ k, label, icon }) => (
               <button
@@ -72,14 +72,14 @@ export default function NewSessionSheet({ open, onClose }: NewSessionSheetProps)
           {/* La chat usa OpenCode: avvisa se la CLI non è sul PATH */}
           {kind === 'chat' && !opencodeAvailable && (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
-              OpenCode non trovato sul PATH. Installa la CLI con «npm install -g opencode-ai»
-              per usare la chat (il terminale funziona comunque).
+              OpenCode not found on PATH. Install the CLI with «npm install -g opencode-ai»
+              to use chat (the terminal works regardless).
             </div>
           )}
 
           {/* Cartella */}
           <div>
-            <div className="mb-1.5 text-xs font-medium text-zinc-400">Cartella di lavoro</div>
+            <div className="mb-1.5 text-xs font-medium text-zinc-400">Working folder</div>
             <button
               onClick={() => setPickerOpen(true)}
               className="flex w-full min-h-12 items-center gap-3 rounded-2xl border border-white/5 bg-raised px-4 py-3 text-left"
@@ -91,7 +91,7 @@ export default function NewSessionSheet({ open, onClose }: NewSessionSheetProps)
                   <span className="block truncate text-xs text-zinc-500">{cwd}</span>
                 </span>
               ) : (
-                <span className="flex-1 text-sm text-zinc-500">Scegli cartella…</span>
+                <span className="flex-1 text-sm text-zinc-500">Choose folder…</span>
               )}
             </button>
           </div>
@@ -103,7 +103,7 @@ export default function NewSessionSheet({ open, onClose }: NewSessionSheetProps)
             disabled={!cwd || busy || (kind === 'chat' && !opencodeAvailable)}
             className="w-full rounded-2xl bg-accent py-3.5 text-sm font-semibold text-black active:opacity-80 disabled:opacity-40"
           >
-            {busy ? 'Creazione…' : 'Crea sessione'}
+            {busy ? 'Creating…' : 'Create session'}
           </button>
         </div>
       </Sheet>

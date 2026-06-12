@@ -20,7 +20,7 @@ export default function Sheet({ open, title, onClose, children }: SheetProps) {
           <button
             onClick={onClose}
             className="grid h-11 w-11 place-items-center rounded-full text-zinc-400 active:bg-white/5"
-            aria-label="Chiudi"
+            aria-label="Close"
           >
             <IconX />
           </button>

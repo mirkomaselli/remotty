@@ -12,13 +12,13 @@ export function relTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   if (!Number.isFinite(diff)) return '';
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return 'adesso';
-  if (m < 60) return `${m} min fa`;
+  if (m < 1) return 'now';
+  if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h fa`;
+  if (h < 24) return `${h} h ago`;
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d} g fa`;
-  return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+  if (d < 7) return `${d} d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
 }
 
 export function fmtCost(usd: number): string {
@@ -57,12 +57,12 @@ export function stringifyInput(input: unknown): string {
 }
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
-  created: 'nuova',
-  running: 'in corso',
-  waiting_permission: 'permesso',
-  idle: 'pronta',
-  exited: 'terminata',
-  error: 'errore',
+  created: 'new',
+  running: 'running',
+  waiting_permission: 'permission',
+  idle: 'ready',
+  exited: 'exited',
+  error: 'error',
 };
 
 export const STATUS_DOT: Record<SessionStatus, string> = {

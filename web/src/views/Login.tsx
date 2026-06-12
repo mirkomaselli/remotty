@@ -25,7 +25,7 @@ export default function Login() {
       useStore.getState().setAuthed(true);
       navigate('/', { replace: true });
     } catch {
-      setError('Token non valido');
+      setError('Invalid token');
     } finally {
       setBusy(false);
     }
@@ -35,7 +35,7 @@ export default function Login() {
     <div className="flex h-full flex-col items-center justify-center px-6 pt-safe pb-safe">
       <img src="/icon.svg" alt="" className="mb-5 h-16 w-16 rounded-2xl" />
       <h1 className="text-lg font-semibold text-zinc-100">remotty</h1>
-      <p className="mt-1 mb-8 text-sm text-zinc-500">Inserisci il token di accesso</p>
+      <p className="mt-1 mb-8 text-sm text-zinc-500">Enter your access token</p>
       <form onSubmit={submit} className="w-full max-w-sm space-y-3">
         <input
           type="password"
@@ -52,7 +52,7 @@ export default function Login() {
           disabled={!token.trim() || busy}
           className="w-full rounded-2xl bg-accent py-3.5 text-sm font-semibold text-black active:opacity-80 disabled:opacity-40"
         >
-          {busy ? 'Accesso…' : 'Accedi'}
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>

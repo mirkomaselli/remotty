@@ -54,10 +54,10 @@ export default function ToolCard({ part }: { part: ToolPart }) {
           </div>
           <div>
             <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              Risultato
+              Result
             </div>
             {part.result === null ? (
-              <div className="text-xs text-zinc-500">in esecuzione…</div>
+              <div className="text-xs text-zinc-500">running…</div>
             ) : (
               <>
                 <pre
@@ -65,7 +65,7 @@ export default function ToolCard({ part }: { part: ToolPart }) {
                     isError ? 'text-red-300' : 'text-zinc-300'
                   }`}
                 >
-                  {shown || '(vuoto)'}
+                  {shown || '(empty)'}
                   {truncated ? '…' : ''}
                 </pre>
                 {content.length > RESULT_TRUNCATE && (
@@ -73,7 +73,7 @@ export default function ToolCard({ part }: { part: ToolPart }) {
                     onClick={() => setShowAll((v) => !v)}
                     className="mt-1.5 text-xs font-medium text-accent"
                   >
-                    {showAll ? 'mostra meno' : 'mostra tutto'}
+                    {showAll ? 'show less' : 'show all'}
                   </button>
                 )}
               </>

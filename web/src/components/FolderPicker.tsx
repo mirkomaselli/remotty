@@ -50,7 +50,7 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
     try {
       setCur(await api.browse(path));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Errore di navigazione');
+      setError(e instanceof Error ? e.message : 'Navigation error');
     } finally {
       setLoading(false);
     }
@@ -81,24 +81,24 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
           }}
           disabled={!cur || atRoots}
           className="grid h-11 w-11 place-items-center rounded-full text-zinc-300 active:bg-white/5 disabled:opacity-30"
-          aria-label="Cartella superiore"
+          aria-label="Parent folder"
         >
           <IconChevronLeft />
         </button>
         <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-zinc-100">
-          Scegli cartella
+          Choose folder
         </h2>
         <button
           onClick={() => void browse()}
           className="grid h-11 w-11 place-items-center rounded-full text-zinc-300 active:bg-white/5"
-          aria-label="Radici"
+          aria-label="Roots"
         >
           <IconHome />
         </button>
         <button
           onClick={onClose}
           className="grid h-11 w-11 place-items-center rounded-full text-zinc-300 active:bg-white/5"
-          aria-label="Chiudi"
+          aria-label="Close"
         >
           <IconX />
         </button>
@@ -130,7 +130,7 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
         {atRoots && projects.length > 0 && (
           <div className="border-b border-white/5 pb-2">
             <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              Progetti recenti
+              Recent projects
             </div>
             {projects.map((p) => (
               <button
@@ -147,13 +147,13 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
               </button>
             ))}
             <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              Sfoglia cartelle
+              Browse folders
             </div>
           </div>
         )}
 
         {error && <div className="px-4 py-3 text-sm text-red-400">{error}</div>}
-        {loading && <div className="px-4 py-3 text-sm text-zinc-500">caricamento…</div>}
+        {loading && <div className="px-4 py-3 text-sm text-zinc-500">loading…</div>}
         {!loading &&
           cur?.dirs.map((d) => (
             <div key={d.path} className="flex items-center active:bg-white/5">
@@ -169,7 +169,7 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
             </div>
           ))}
         {!loading && cur && cur.dirs.length === 0 && !error && (
-          <div className="px-4 py-3 text-sm text-zinc-500">Nessuna sottocartella</div>
+          <div className="px-4 py-3 text-sm text-zinc-500">No subfolders</div>
         )}
       </div>
 
@@ -183,7 +183,7 @@ export default function FolderPicker({ open, onClose, onSelect }: FolderPickerPr
             onClick={() => onSelect(cur.path)}
             className="w-full rounded-2xl bg-accent py-3.5 text-sm font-semibold text-black active:opacity-80"
           >
-            Seleziona «{basename(cur.path)}»
+            Select «{basename(cur.path)}»
           </button>
         </div>
       )}

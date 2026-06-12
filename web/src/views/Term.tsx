@@ -213,13 +213,13 @@ export default function Term() {
         <button
           onClick={() => navigate('/')}
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-zinc-300 active:bg-white/5"
-          aria-label="Indietro"
+          aria-label="Back"
         >
           <IconChevronLeft />
         </button>
         <div className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-zinc-100">
-            {meta?.title || (meta ? basename(meta.cwd) : 'Terminale')}
+            {meta?.title || (meta ? basename(meta.cwd) : 'Terminal')}
           </span>
         </div>
         <span
@@ -235,7 +235,7 @@ export default function Term() {
 
       {cols > 0 && cols < 60 && exitCode === undefined && (
         <div className="bg-amber-400/10 px-4 py-1 text-center text-[11px] text-amber-300">
-          Schermo stretto ({cols} col): le TUI come Claude Code richiedono ≥80 colonne
+          Narrow screen ({cols} col): TUIs like Claude Code need ≥80 columns
         </div>
       )}
 
@@ -245,13 +245,13 @@ export default function Term() {
         {exitCode !== undefined && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/70 backdrop-blur-sm">
             <div className="text-sm text-zinc-200">
-              Processo terminato{exitCode !== null ? ` (exit ${exitCode})` : ''}
+              Process exited{exitCode !== null ? ` (exit ${exitCode})` : ''}
             </div>
             <button
               onClick={() => navigate('/')}
               className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black active:opacity-80"
             >
-              Torna alla home
+              Back to home
             </button>
           </div>
         )}
@@ -311,7 +311,7 @@ export default function Term() {
                 ? 'border-accent/60 bg-accent/20 text-accent'
                 : 'border-white/10 bg-raised text-zinc-400'
             }`}
-            aria-label="Cronologia comandi"
+            aria-label="Command history"
           >
             ↺
           </button>
@@ -326,7 +326,7 @@ export default function Term() {
               }
             }}
             disabled={exitCode !== undefined}
-            placeholder="Comando… (vuoto = Invio)"
+            placeholder="Command… (empty = Enter)"
             autoCapitalize="none"
             autoCorrect="off"
             autoComplete="off"
@@ -339,7 +339,7 @@ export default function Term() {
             onClick={sendLine}
             disabled={exitCode !== undefined}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent text-base font-semibold text-black active:opacity-80 disabled:opacity-30"
-            aria-label="Invia"
+            aria-label="Send"
           >
             ➤
           </button>

@@ -117,7 +117,7 @@ export default function Chat() {
     setModelsErr(null);
     api.opencodeModels(meta.cwd).then(
       (r) => setModels(r),
-      (e) => setModelsErr(e instanceof Error ? e.message : 'Errore nel caricamento dei modelli'),
+      (e) => setModelsErr(e instanceof Error ? e.message : 'Failed to load models'),
     );
   };
 
@@ -133,14 +133,14 @@ export default function Chat() {
 
   const clearCtx = (): void => {
     setMenuOpen(false);
-    if (!window.confirm("Ripulire il contesto? L'agente riparte da zero (la cronologia resta visibile)."))
+    if (!window.confirm('Clear the context? The agent starts over from scratch (the history stays visible).'))
       return;
     sockRef.current?.clearContext();
   };
 
   const remove = async (): Promise<void> => {
     setMenuOpen(false);
-    if (!window.confirm('Eliminare questa sessione?')) return;
+    if (!window.confirm('Delete this session?')) return;
     try {
       await api.deleteSession(id);
       useStore.getState().removeSession(id);
@@ -159,7 +159,7 @@ export default function Chat() {
         <button
           onClick={() => navigate('/')}
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-zinc-300 active:bg-white/5"
-          aria-label="Indietro"
+          aria-label="Back"
         >
           <IconChevronLeft />
         </button>
@@ -195,21 +195,21 @@ export default function Chat() {
               disabled={busy}
               className="flex min-h-11 w-52 items-center px-4 text-sm text-zinc-200 active:bg-white/5 disabled:opacity-40"
             >
-              Compatta contesto
+              Compact context
             </button>
             <button
               onClick={clearCtx}
               disabled={busy}
               className="flex min-h-11 w-52 items-center px-4 text-sm text-zinc-200 active:bg-white/5 disabled:opacity-40"
             >
-              Ripulisci contesto
+              Clear context
             </button>
             <button
               onClick={() => void remove()}
               className="flex min-h-11 w-52 items-center gap-2.5 px-4 text-sm text-red-400 active:bg-white/5"
             >
               <IconTrash className="h-4 w-4" />
-              Elimina
+              Delete
             </button>
           </div>
         )}
@@ -219,7 +219,7 @@ export default function Chat() {
 
       {conn !== 'open' && (
         <div className="bg-amber-400/10 px-4 py-1 text-center text-[11px] text-amber-300">
-          {conn === 'connecting' ? 'connessione…' : 'riconnessione…'}
+          {conn === 'connecting' ? 'connecting…' : 'reconnecting…'}
         </div>
       )}
 
@@ -242,7 +242,7 @@ export default function Chat() {
           {running && !chat.pendingText && (
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              sto lavorando…
+              working…
             </div>
           )}
         </div>
@@ -258,7 +258,7 @@ export default function Chat() {
             className="pointer-events-auto absolute -top-12 right-4 flex items-center gap-1.5 rounded-full border border-white/10 bg-raised px-3 py-2 text-xs text-zinc-200 shadow-lg"
           >
             <IconArrowDown className="h-3.5 w-3.5" />
-            ultimi messaggi
+            latest messages
           </button>
         </div>
       )}
@@ -275,7 +275,7 @@ export default function Chat() {
           }
           onDeny={() =>
             sockRef.current?.permissionResponse(pending.requestId, 'deny', {
-              message: "Negato dall'utente",
+              message: 'Denied by user',
             })
           }
         />
@@ -284,7 +284,7 @@ export default function Chat() {
       {/* Selettore modello OpenCode */}
       <Sheet
         open={modelSheetOpen}
-        title="Modello"
+        title="Model"
         onClose={() => setModelSheetOpen(false)}
       >
         {modelsErr && (
@@ -293,13 +293,13 @@ export default function Chat() {
           </div>
         )}
         {!modelsErr && !models && (
-          <div className="py-6 text-center text-sm text-zinc-500">caricamento modelli…</div>
+          <div className="py-6 text-center text-sm text-zinc-500">loading models…</div>
         )}
         {models && (
           <div className="space-y-4">
             <ModelRow
-              label="Default di OpenCode"
-              sub="usa il modello di default configurato"
+              label="OpenCode default"
+              sub="use the configured default model"
               selected={currentModel === null}
               onClick={() => selectModel(null)}
             />
@@ -323,7 +323,7 @@ export default function Chat() {
             ))}
             {models.providers.length === 0 && (
               <div className="py-4 text-center text-sm text-zinc-500">
-                Nessun provider configurato: esegui «opencode auth login» sul PC.
+                No provider configured: run «opencode auth login» on the PC.
               </div>
             )}
           </div>
@@ -346,7 +346,7 @@ export default function Chat() {
               el.style.height = `${Math.min(el.scrollHeight, 144)}px`; // ~6 righe
             }}
             rows={1}
-            placeholder="Scrivi un messaggio…"
+            placeholder="Type a message…"
             enterKeyHint="enter"
             className="max-h-36 min-h-11 flex-1 resize-none rounded-2xl border border-white/5 bg-raised px-4 py-2.5 text-[15px] leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
           />
@@ -354,7 +354,7 @@ export default function Chat() {
             <button
               onClick={() => sockRef.current?.interrupt()}
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-500/90 text-white active:opacity-80"
-              aria-label="Interrompi"
+              aria-label="Stop"
             >
               <IconStop className="h-5 w-5" />
             </button>
@@ -363,7 +363,7 @@ export default function Chat() {
               onClick={send}
               disabled={!text.trim() || conn !== 'open' || chat.status === 'waiting_permission'}
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-black active:opacity-80 disabled:opacity-30"
-              aria-label="Invia"
+              aria-label="Send"
             >
               <IconSend className="h-5 w-5" />
             </button>
@@ -442,7 +442,7 @@ function ChatItemView({ item }: { item: ChatItem }) {
             ? `${fmtCost(item.result.totalCostUsd)} · `
             : ''}
           {fmtDuration(item.result.durationMs)} · {item.result.numTurns}{' '}
-          {item.result.numTurns === 1 ? 'turno' : 'turni'}
+          {item.result.numTurns === 1 ? 'turn' : 'turns'}
         </div>
       );
     case 'error':
@@ -479,7 +479,7 @@ function PermissionPrompt({
         <div className="mb-1.5 flex items-center gap-2">
           <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
           <span className="text-sm font-semibold text-amber-200">
-            Permesso richiesto: {pending.displayName ?? pending.toolName}
+            Permission requested: {pending.displayName ?? pending.toolName}
           </span>
         </div>
         {pending.description && (
@@ -493,13 +493,13 @@ function PermissionPrompt({
             onClick={() => onAllow()}
             className="min-h-11 flex-1 rounded-xl bg-accent text-sm font-semibold text-black active:opacity-80"
           >
-            Consenti
+            Allow
           </button>
           <button
             onClick={onDeny}
             className="min-h-11 flex-1 rounded-xl border border-white/10 bg-raised text-sm font-semibold text-zinc-200 active:bg-white/5"
           >
-            Nega
+            Deny
           </button>
         </div>
         {alwaysSuggestions.length > 0 && (
@@ -524,5 +524,5 @@ function suggestionLabel(s: { type: string; [key: string]: unknown }): string {
   const patterns = Array.isArray(s['patterns'])
     ? (s['patterns'] as unknown[]).filter((x): x is string => typeof x === 'string')
     : [];
-  return patterns.length > 0 ? `Consenti sempre (${patterns.join(', ')})` : 'Consenti sempre';
+  return patterns.length > 0 ? `Always allow (${patterns.join(', ')})` : 'Always allow';
 }

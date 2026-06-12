@@ -43,7 +43,7 @@ export default function Home() {
 
   const remove = async (id: string): Promise<void> => {
     setMenuFor(null);
-    if (!window.confirm('Eliminare questa sessione?')) return;
+    if (!window.confirm('Delete this session?')) return;
     try {
       await api.deleteSession(id);
       useStore.getState().removeSession(id);
@@ -67,7 +67,7 @@ export default function Home() {
           <span
             className={`h-2 w-2 rounded-full ${reachable ? 'bg-emerald-400' : 'bg-red-500'}`}
           />
-          {reachable ? 'connesso' : 'offline'}
+          {reachable ? 'connected' : 'offline'}
         </span>
       </header>
 
@@ -75,9 +75,9 @@ export default function Home() {
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-28">
         {sessionsLoaded && sessions.length === 0 && (
           <div className="mt-24 text-center text-sm text-zinc-500">
-            Nessuna sessione.
+            No sessions yet.
             <br />
-            Creane una con il pulsante +
+            Create one with the + button
           </div>
         )}
         <div className="space-y-2.5 pt-2">
@@ -104,7 +104,7 @@ export default function Home() {
         onClick={() => setSheetOpen(true)}
         className="fixed right-5 z-20 grid h-14 w-14 place-items-center rounded-2xl bg-accent text-black shadow-lg shadow-emerald-500/20 active:opacity-80"
         style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1.25rem)' }}
-        aria-label="Nuova sessione"
+        aria-label="New session"
       >
         <IconPlus className="h-6 w-6" />
       </button>
@@ -156,7 +156,7 @@ function SessionCard({
       <button
         onClick={onMenu}
         className="absolute top-2.5 right-1.5 grid h-11 w-11 place-items-center rounded-full text-zinc-500 active:bg-white/5"
-        aria-label="Menu sessione"
+        aria-label="Session menu"
       >
         <IconKebab className="h-4.5 w-4.5" />
       </button>
@@ -168,7 +168,7 @@ function SessionCard({
             className="flex min-h-11 w-44 items-center gap-2.5 px-4 text-sm text-red-400 active:bg-white/5"
           >
             <IconTrash className="h-4 w-4" />
-            Elimina
+            Delete
           </button>
         </div>
       )}

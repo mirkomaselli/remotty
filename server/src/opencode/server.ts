@@ -44,7 +44,7 @@ export class OpenCodeServer {
     const deadline = Date.now() + READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (this.proc && this.proc.exitCode !== null) {
-        throw new Error(`opencode serve è terminato subito (exit ${this.proc.exitCode})`);
+        throw new Error(`opencode serve exited immediately (exit ${this.proc.exitCode})`);
       }
       if (await this.healthy()) {
         this.logger.info(`opencode serve pronto su ${this.baseUrl}`);
