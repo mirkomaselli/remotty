@@ -1,5 +1,11 @@
 # remotty
 
+<p align="center">
+  <img src="docs/screenshots/home.png" width="250" alt="Home — list of chat and terminal sessions" />
+  <img src="docs/screenshots/chat.png" width="250" alt="Chat — tool-call cards and an Allow / Deny permission prompt" />
+  <img src="docs/screenshots/terminal.png" width="250" alt="Terminal — xterm with the extra-keys bar" />
+</p>
+
 Code from your phone. **remotty** is a self-hosted web app that runs on your dev machine and
 wraps terminal coding agents in a mobile-first chat UI — powered by [OpenCode](https://opencode.ai)
 — plus a folder browser and a real terminal (xterm over ConPTY/forkpty) as a fallback for
@@ -18,8 +24,6 @@ or with your existing subscriptions (`opencode auth login`).
 
 Monorepo (npm workspaces): `shared/` (protocol contract), `server/` (Express + ws + OpenCode
 adapter), `web/` (Vite + React + Tailwind, PWA).
-
-> UI text is currently in Italian — i18n contributions welcome.
 
 ## Requirements
 
