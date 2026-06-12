@@ -28,6 +28,8 @@ export interface SessionMeta {
   opencodeSessionId?: string | null;
   /** OpenCode: modello scelto dall'utente ('providerID/modelID'), null = default. */
   opencodeModel?: string | null;
+  /** OpenCode: variant del modello (es. high/max), null = default del modello. */
+  opencodeVariant?: string | null;
   totalCostUsd?: number;
   numTurns?: number;
   // terminal-only
@@ -95,6 +97,8 @@ export type ChatClientMsg =
   | { type: 'interrupt' }
   /** OpenCode: 'providerID/modelID', null = torna al default. */
   | { type: 'set_model'; model: string | null }
+  /** OpenCode: variant dichiarata dal modello, null = default del modello. */
+  | { type: 'set_variant'; variant: string | null }
   /** Clear vero: il contesto dell'agente riparte da zero (la cronologia UI resta). */
   | { type: 'clear_context' }
   /** Compatta il contesto in un riassunto (equivalente di /compact). */
@@ -189,6 +193,8 @@ export interface ChatEventsPage {
 export interface OpencodeModelEntry {
   id: string;
   name: string;
+  /** Variants abilitate dichiarate da OpenCode per questo modello. */
+  variants: string[];
 }
 
 export interface OpencodeProviderInfo {

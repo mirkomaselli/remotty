@@ -110,6 +110,9 @@ export class OpenCodeChatSession extends BaseChatSession {
       case 'set_model':
         this.setModel(msg.model);
         break;
+      case 'set_variant':
+        this.setVariant(msg.variant);
+        break;
       case 'clear_context':
         void this.clearContext();
         break;
@@ -153,6 +156,8 @@ export class OpenCodeChatSession extends BaseChatSession {
       const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
       const model = this.selectedModel();
       if (model) body['model'] = model;
+      const variant = await this.selectedVariant(model);
+      if (variant) body['variant'] = variant;
       await this.ocFetch(
         'POST',
         `/session/${encodeURIComponent(this.meta.opencodeSessionId)}/prompt_async`,
@@ -200,6 +205,25 @@ export class OpenCodeChatSession extends BaseChatSession {
       return;
     }
     this.meta.opencodeModel = model;
+    // Le variants sono specifiche del modello: non riutilizzarne una sul nuovo modello.
+    this.meta.opencodeVariant = null;
+    this.onMetaChanged(this.meta);
+    this.emit({ type: 'meta', meta: this.meta });
+  }
+
+  private setVariant(variant: string | null): void {
+    if (
+      variant !== null &&
+      (variant.length === 0 || variant.length > 64 || !/^[a-zA-Z0-9._-]+$/.test(variant))
+    ) {
+      this.emit({ type: 'error', message: 'Invalid model variant' });
+      return;
+    }
+    if (variant !== null && !this.selectedModel()) {
+      this.emit({ type: 'error', message: 'Select a model before choosing a variant' });
+      return;
+    }
+    this.meta.opencodeVariant = variant;
     this.onMetaChanged(this.meta);
     this.emit({ type: 'meta', meta: this.meta });
   }
@@ -208,6 +232,38 @@ export class OpenCodeChatSession extends BaseChatSession {
   private selectedModel(): { providerID: string; modelID: string } | null {
     const raw = this.meta.opencodeModel ?? this.config.opencodeModel;
     return raw ? parseModel(raw) : null;
+  }
+
+  /** Verifica la variant contro i dati correnti di OpenCode prima di ogni prompt. */
+  private async selectedVariant(
+    model: { providerID: string; modelID: string } | null,
+  ): Promise<string | null> {
+    const variant = this.meta.opencodeVariant;
+    if (!variant) return null;
+    if (!model) {
+      this.meta.opencodeVariant = null;
+      this.onMetaChanged(this.meta);
+      this.emit({ type: 'meta', meta: this.meta });
+      return null;
+    }
+    const res = await this.ocFetch('GET', '/config/providers');
+    const data = (await res.json()) as {
+      providers?: Array<{
+        id?: string;
+        models?: Record<string, { id?: string; variants?: Record<string, { disabled?: boolean }> }>;
+      }>;
+    };
+    const provider = (data.providers ?? []).find((p) => p.id === model.providerID);
+    const entry = Object.entries(provider?.models ?? {}).find(
+      ([modelId, value]) => (value.id ?? modelId) === model.modelID,
+    )?.[1];
+    if (!entry?.variants?.[variant] || entry.variants[variant]?.disabled === true) {
+      this.meta.opencodeVariant = null;
+      this.onMetaChanged(this.meta);
+      this.emit({ type: 'meta', meta: this.meta });
+      throw new Error(`Model variant "${variant}" is not available for the selected model`);
+    }
+    return variant;
   }
 
   /** Primo default dalla mappa `default` di /config/providers (serve a summarize). */

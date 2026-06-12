@@ -78,7 +78,8 @@ JSONL log (`data/chat/<sessionId>.jsonl`) before sending. On attach the client s
 (mobile browsers kill sockets on screen lock — this is the norm, not the exception).
 
 Client → server: `attach`, `user_message`, `permission_response`, `interrupt`, `set_model`,
-`clear_context`, `compact_context`, `ping` (server replies `pong`, outside the seq stream).
+`set_variant`, `clear_context`, `compact_context`, `ping` (server replies `pong`, outside the
+seq stream).
 
 Server → client: `ChatEventEnvelope = { seq, ev: ChatEvent }` where ChatEvent is one of:
 `status`, `meta`, `user_message` (echo), `text_delta`, `assistant_message` (finalized blocks:
@@ -124,8 +125,9 @@ server.
     reject). "Always allow" surfaces as an `opencode_always` suggestion with the rule patterns.
   - `session.idle` → `result` (+status `idle`); `session.error` → `error` event.
 - SSE loop reconnects automatically on drop (1.5s retry) while the session is live.
-- **Model selection**: `set_model` ('providerID/modelID' or null) is persisted per session;
-  prompt priority is user choice → env `REMOTTY_OPENCODE_MODEL` → OpenCode default.
+- **Model selection**: `set_model` ('providerID/modelID' or null) and `set_variant` are persisted
+  per session. Variants come from the selected model's OpenCode metadata and reset when the model
+  changes; prompt model priority is user choice → env `REMOTTY_OPENCODE_MODEL` → OpenCode default.
 - **Context ops**: `clear_context` creates a fresh OpenCode session under the hood (UI history
   stays, a `notice` marks the cut); `compact_context` calls OpenCode's summarize.
 
@@ -165,7 +167,7 @@ Views:
    and result, monospace, result truncated with "show more"); permission requests as a sticky
    bottom sheet with Allow / Deny (+ "always allow" suggestion buttons from `opencode_always`);
    composer (auto-growing textarea, send button, Stop button while `running`); header: title,
-   status dot, model picker, kebab → compact/clear context, delete session. Cost/turns shown
+   status dot, model/reasoning picker, kebab → compact/clear context, delete session. Cost/turns shown
    after each `result`.
 4. **Terminal** — full-bleed xterm (`@xterm/xterm` 6.0.0 + `@xterm/addon-fit`; DOM renderer on
    iOS, WebGL elsewhere via feature detect), extra-keys bar: Esc, Tab, sticky-Ctrl, ↑ ↓ ← →,

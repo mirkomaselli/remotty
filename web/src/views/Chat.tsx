@@ -44,6 +44,7 @@ export default function Chat() {
   const [modelsErr, setModelsErr] = useState<string | null>(null);
   // undefined = nessuna scelta ottimistica in corso (null è un valore valido: "default").
   const [optimisticModel, setOptimisticModel] = useState<string | null | undefined>(undefined);
+  const [optimisticVariant, setOptimisticVariant] = useState<string | null | undefined>(undefined);
   const [text, setText] = useState('');
   const [atBottom, setAtBottom] = useState(true);
   const sockRef = useRef<ChatSocket | null>(null);
@@ -56,6 +57,8 @@ export default function Chat() {
   const running = chat.status === 'running';
   const currentModel =
     optimisticModel !== undefined ? optimisticModel : (meta?.opencodeModel ?? null);
+  const currentVariant =
+    optimisticVariant !== undefined ? optimisticVariant : (meta?.opencodeVariant ?? null);
   const busy = running || chat.status === 'waiting_permission' || conn !== 'open';
 
   useWakeLock(running || chat.status === 'waiting_permission');
@@ -80,8 +83,9 @@ export default function Chat() {
     };
   }, [id]);
 
-  // Il server è la fonte di verità per il modello: azzera l'ottimismo quando arriva.
+  // Il server è la fonte di verità: azzera l'ottimismo quando arriva la meta persistita.
   useEffect(() => setOptimisticModel(undefined), [meta?.opencodeModel]);
+  useEffect(() => setOptimisticVariant(undefined), [meta?.opencodeVariant]);
 
   // Auto-scroll in fondo se l'utente non ha scrollato verso l'alto.
   useEffect(() => {
@@ -122,8 +126,17 @@ export default function Chat() {
   };
 
   const selectModel = (value: string | null): void => {
+    if (!sockRef.current?.setModel(value)) return;
+    setOptimisticModel(value);
+    setOptimisticVariant(null);
+    const entry = findModel(models, value);
+    if (!entry || entry.variants.length === 0) setModelSheetOpen(false);
+  };
+
+  const selectVariant = (value: string | null): void => {
+    if (!sockRef.current?.setVariant(value)) return;
+    setOptimisticVariant(value);
     setModelSheetOpen(false);
-    if (sockRef.current?.setModel(value)) setOptimisticModel(value);
   };
 
   const compactCtx = (): void => {
@@ -176,9 +189,10 @@ export default function Chat() {
         </div>
         <button
           onClick={openModelSheet}
-          className="max-w-36 shrink-0 truncate rounded-full border border-white/10 bg-raised px-3 py-1.5 text-[11px] font-medium text-zinc-300 active:bg-white/5"
+          className="max-w-40 shrink-0 truncate rounded-full border border-white/10 bg-raised px-3 py-1.5 text-[11px] font-medium text-zinc-300 active:bg-white/5"
         >
           {modelShortLabel(currentModel)}
+          {currentVariant ? ` · ${currentVariant}` : ''}
         </button>
         <button
           onClick={() => setMenuOpen((v) => !v)}
@@ -284,7 +298,7 @@ export default function Chat() {
       {/* Selettore modello OpenCode */}
       <Sheet
         open={modelSheetOpen}
-        title="Model"
+        title="Model & reasoning"
         onClose={() => setModelSheetOpen(false)}
       >
         {modelsErr && (
@@ -308,15 +322,23 @@ export default function Chat() {
                 <div className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
                   {p.name}
                 </div>
-                <div className="overflow-hidden rounded-xl border border-white/5">
+                <div className="divide-y divide-white/5 overflow-hidden rounded-xl border border-white/5">
                   {p.models.map((m) => (
-                    <ModelRow
-                      key={m.id}
-                      label={m.name}
-                      sub={m.id + (p.defaultModelID === m.id ? ' · default' : '')}
-                      selected={currentModel === `${p.id}/${m.id}`}
-                      onClick={() => selectModel(`${p.id}/${m.id}`)}
-                    />
+                    <div key={m.id}>
+                      <ModelRow
+                        label={m.name}
+                        sub={m.id + (p.defaultModelID === m.id ? ' · default' : '')}
+                        selected={currentModel === `${p.id}/${m.id}`}
+                        onClick={() => selectModel(`${p.id}/${m.id}`)}
+                      />
+                      {currentModel === `${p.id}/${m.id}` && m.variants.length > 0 && (
+                        <VariantPicker
+                          variants={m.variants}
+                          selected={currentVariant}
+                          onSelect={selectVariant}
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -374,6 +396,19 @@ export default function Chat() {
   );
 }
 
+function findModel(models: OpencodeModelsResponse | null, value: string | null) {
+  if (!models || !value) return null;
+  const slash = value.indexOf('/');
+  if (slash <= 0) return null;
+  const providerID = value.slice(0, slash);
+  const modelID = value.slice(slash + 1);
+  return (
+    models.providers
+      .find((provider) => provider.id === providerID)
+      ?.models.find((model) => model.id === modelID) ?? null
+  );
+}
+
 function modelShortLabel(model: string | null): string {
   if (!model) return 'auto';
   const slash = model.indexOf('/');
@@ -405,6 +440,56 @@ function ModelRow({
         {sub && <span className="block truncate text-[11px] text-zinc-500">{sub}</span>}
       </span>
       {selected && <IconCheck className="h-4 w-4 shrink-0 text-accent" />}
+    </button>
+  );
+}
+
+function VariantPicker({
+  variants,
+  selected,
+  onSelect,
+}: {
+  variants: string[];
+  selected: string | null;
+  onSelect: (variant: string | null) => void;
+}) {
+  return (
+    <div className="border-t border-white/5 bg-black/15 px-4 py-3">
+      <div className="mb-2 text-[11px] font-medium text-zinc-400">Reasoning effort</div>
+      <div className="flex flex-wrap gap-2">
+        <VariantChip label="Auto" selected={selected === null} onClick={() => onSelect(null)} />
+        {variants.map((variant) => (
+          <VariantChip
+            key={variant}
+            label={variant}
+            selected={selected === variant}
+            onClick={() => onSelect(variant)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VariantChip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`min-h-9 rounded-full border px-3 text-xs font-medium capitalize ${
+        selected
+          ? 'border-accent/60 bg-accent/15 text-accent'
+          : 'border-white/10 bg-raised text-zinc-300 active:bg-white/5'
+      }`}
+    >
+      {label}
     </button>
   );
 }

@@ -42,6 +42,7 @@ export class SessionManager {
     if (req.kind === 'chat') {
       meta.agent = req.agent;
       meta.opencodeSessionId = null;
+      meta.opencodeVariant = null;
     } else if (req.command) {
       meta.command = req.command;
     }

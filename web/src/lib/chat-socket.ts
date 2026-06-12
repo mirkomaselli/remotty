@@ -108,6 +108,10 @@ export class ChatSocket {
     return this.send({ type: 'set_model', model });
   }
 
+  setVariant(variant: string | null): boolean {
+    return this.send({ type: 'set_variant', variant });
+  }
+
   clearContext(): boolean {
     return this.send({ type: 'clear_context' });
   }

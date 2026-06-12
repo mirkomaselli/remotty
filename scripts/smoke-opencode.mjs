@@ -194,7 +194,10 @@ async function main() {
     const modelsRes = await json('GET', `/api/opencode/models?cwd=${encodeURIComponent(TEST_CWD)}`);
     const providers = modelsRes.data?.providers ?? [];
     assert(
-      modelsRes.status === 200 && providers.length > 0 && providers[0].models.length > 0,
+      modelsRes.status === 200 &&
+        providers.length > 0 &&
+        providers[0].models.length > 0 &&
+        providers.every((p) => p.models.every((m) => Array.isArray(m.variants))),
       'GET /api/opencode/models',
       `providers=${providers.map((p) => p.id).join(',')}`,
     );
@@ -211,8 +214,12 @@ async function main() {
     );
     record('set_model invalido → error', true);
 
-    const prov = providers[0];
-    const modelValue = `${prov.id}/${prov.defaultModelID ?? prov.models[0].id}`;
+    const variantChoice = providers
+      .flatMap((provider) => provider.models.map((model) => ({ provider, model })))
+      .find(({ model }) => model.variants.length > 0);
+    const prov = variantChoice?.provider ?? providers[0];
+    const pickedModel = variantChoice?.model ?? prov.models[0];
+    const modelValue = `${prov.id}/${pickedModel.id}`;
     cut = lastSeqOf(events);
     ws.send(JSON.stringify({ type: 'set_model', model: modelValue }));
     await collectUntil(
@@ -224,7 +231,32 @@ async function main() {
     );
     record('set_model valido → meta.opencodeModel', true, modelValue);
 
-    // 8. clear vero: nuova sessione opencode al posto della vecchia
+    // 8. variant: se il modello ne dichiara, persisti la scelta nella sessione.
+    if (pickedModel.variants.length > 0) {
+      const variant = pickedModel.variants[0];
+      cut = lastSeqOf(events);
+      ws.send(JSON.stringify({ type: 'set_variant', variant }));
+      await collectUntil(
+        ws,
+        events,
+        (ev) =>
+          evsAfter(ev, cut).some(
+            (e) => e.type === 'meta' && e.meta?.opencodeVariant === variant,
+          ),
+        10_000,
+        'meta con opencodeVariant',
+      );
+      const variantMeta = await json('GET', `/api/sessions/${id}`);
+      assert(
+        variantMeta.data?.opencodeVariant === variant,
+        'set_variant → meta persistita',
+        `${modelValue} · ${variant}`,
+      );
+    } else {
+      record('set_variant: nessuna variant disponibile, test saltato', true);
+    }
+
+    // 9. clear vero: nuova sessione opencode al posto della vecchia
     const prevOcId = meta.data.opencodeSessionId;
     cut = lastSeqOf(events);
     ws.send(JSON.stringify({ type: 'clear_context' }));
@@ -243,7 +275,7 @@ async function main() {
       `${prevOcId} → ${metaAfterClear.data?.opencodeSessionId}`,
     );
 
-    // 9. turno dopo il clear (usa il modello selezionato col picker)
+    // 10. turno dopo il clear (usa modello e variant selezionati col picker)
     cut = lastSeqOf(events);
     ws.send(
       JSON.stringify({
@@ -268,7 +300,7 @@ async function main() {
       postClearErrors.map((e) => e.message).join(' | '),
     );
 
-    // 10. compact: notice + summarize fino a idle
+    // 11. compact: notice + summarize fino a idle
     cut = lastSeqOf(events);
     ws.send(JSON.stringify({ type: 'compact_context' }));
     await collectUntil(
@@ -290,7 +322,7 @@ async function main() {
     );
     assert(compactEvs.some((e) => e.type === 'notice'), 'compact_context → notice');
 
-    // 11. replay lossless da una seconda connessione
+    // 12. replay lossless da una seconda connessione
     const ws2 = await wsConnect(id);
     const replay = [];
     ws2.send(JSON.stringify({ type: 'attach', afterSeq: 0 }));
@@ -301,7 +333,7 @@ async function main() {
     ws2.close();
     ws.close();
 
-    // 12. delete
+    // 13. delete
     const del = await json('DELETE', `/api/sessions/${id}`);
     assert(del.status === 204, 'DELETE sessione → 204', `status=${del.status}`);
   } catch (err) {

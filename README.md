@@ -115,9 +115,10 @@ talks to it over HTTP + SSE; sessions are scoped per project folder.
 - **No login needed** to start: the free `opencode` provider works immediately.
 - To use **your own** models/subscriptions: run `opencode auth login` on the PC
   (e.g. Anthropic → Claude Pro/Max).
-- **Model picker in chat**: the header button lists every provider/model configured in OpenCode;
-  the choice is per-session (persisted) and can be changed mid-conversation. Priority: in-chat
-  choice → `REMOTTY_OPENCODE_MODEL` → OpenCode default.
+- **Model and reasoning picker in chat**: the header button lists every provider/model configured
+  in OpenCode and the reasoning variants supported by the selected model (for example low, high
+  or max). Both choices are persisted per session and can be changed mid-conversation. Model
+  priority: in-chat choice → `REMOTTY_OPENCODE_MODEL` → OpenCode default.
 - **Context controls** (chat ⋮ menu): *clear context* starts a fresh agent session under the
   hood (UI history stays), *compact context* summarizes the conversation to free context
   (like `/compact`).

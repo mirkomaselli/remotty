@@ -79,7 +79,14 @@ export function createApiRouter(deps: {
         providers?: Array<{
           id?: string;
           name?: string;
-          models?: Record<string, { id?: string; name?: string }>;
+          models?: Record<
+            string,
+            {
+              id?: string;
+              name?: string;
+              variants?: Record<string, { disabled?: boolean }>;
+            }
+          >;
         }>;
         default?: Record<string, string>;
       };
@@ -97,6 +104,10 @@ export function createApiRouter(deps: {
                 .map(([modelId, m]) => ({
                   id: m.id ?? modelId,
                   name: typeof m.name === 'string' && m.name ? m.name : modelId,
+                  variants: Object.entries(m.variants ?? {})
+                    .filter(([, options]) => options?.disabled !== true)
+                    .map(([variant]) => variant)
+                    .sort(compareVariants),
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name)),
             };
@@ -205,6 +216,17 @@ export function createApiRouter(deps: {
   });
 
   return router;
+}
+
+const VARIANT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function compareVariants(a: string, b: string): number {
+  const ai = VARIANT_ORDER.indexOf(a);
+  const bi = VARIANT_ORDER.indexOf(b);
+  if (ai === -1 && bi === -1) return a.localeCompare(b);
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
 }
 
 /** Wraps an async handler so rejections reach the error middleware. */
