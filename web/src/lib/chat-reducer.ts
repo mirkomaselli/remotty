@@ -2,6 +2,8 @@
 // Deve essere replay-safe: rifare il fold da seq 0 produce lo stesso risultato.
 
 import type {
+  AgentQuestionInfo,
+  ChatAttachment,
   ChatEventEnvelope,
   PermissionSuggestion,
   SessionMeta,
@@ -37,6 +39,11 @@ export interface PendingPermission {
   suggestions: PermissionSuggestion[];
 }
 
+export interface PendingQuestion {
+  requestId: string;
+  questions: AgentQuestionInfo[];
+}
+
 export interface TurnResult {
   isError: boolean;
   durationMs: number;
@@ -45,7 +52,7 @@ export interface TurnResult {
 }
 
 export type ChatItem =
-  | { role: 'user'; key: string; text: string }
+  | { role: 'user'; key: string; text: string; attachments: ChatAttachment[] }
   | { role: 'assistant'; key: string; parts: AssistantPart[] }
   | { role: 'result'; key: string; result: TurnResult }
   | { role: 'error'; key: string; message: string }
@@ -59,6 +66,7 @@ export interface ChatUiState {
   groupOpen: boolean;
   status: SessionStatus;
   pendingPermissions: PendingPermission[];
+  pendingQuestions: PendingQuestion[];
   lastSeq: number;
   meta: SessionMeta | null;
 }
@@ -70,6 +78,7 @@ export function initialChatState(): ChatUiState {
     groupOpen: false,
     status: 'created',
     pendingPermissions: [],
+    pendingQuestions: [],
     lastSeq: 0,
     meta: null,
   };
@@ -111,7 +120,15 @@ export function applyEnvelope(state: ChatUiState, env: ChatEventEnvelope): ChatU
       break;
 
     case 'user_message':
-      next.items = [...state.items, { role: 'user', key: `u${env.seq}`, text: ev.text }];
+      next.items = [
+        ...state.items,
+        {
+          role: 'user',
+          key: `u${env.seq}`,
+          text: ev.text,
+          attachments: ev.attachments ?? [],
+        },
+      ];
       next.pendingText = '';
       next.groupOpen = false;
       break;
@@ -167,6 +184,21 @@ export function applyEnvelope(state: ChatUiState, env: ChatEventEnvelope): ChatU
     case 'permission_resolved':
       next.pendingPermissions = state.pendingPermissions.filter(
         (p) => p.requestId !== ev.requestId,
+      );
+      break;
+
+    case 'question_request':
+      if (!state.pendingQuestions.some((question) => question.requestId === ev.requestId)) {
+        next.pendingQuestions = [
+          ...state.pendingQuestions,
+          { requestId: ev.requestId, questions: ev.questions },
+        ];
+      }
+      break;
+
+    case 'question_resolved':
+      next.pendingQuestions = state.pendingQuestions.filter(
+        (question) => question.requestId !== ev.requestId,
       );
       break;
 

@@ -122,6 +122,13 @@ talks to it over HTTP + SSE; sessions are scoped per project folder.
 - **Agent picker**: switch between OpenCode's primary agents (`build`, `plan`) and project/global
   custom primary agents. The picker shows their effective edit and shell permission levels;
   hidden system agents and subagents are not selectable.
+- **Agent questions**: OpenCode question prompts are rendered as native mobile controls with
+  single-choice, multiple-choice and custom text answers when requested by OpenCode, instead of
+  leaving the session waiting invisibly.
+- **Attachments**: add screenshots, photos, PDFs, text files and other model-supported files
+  directly from the mobile composer. Up to 6 files, 20 MB each and 40 MB total per message.
+  File contents are forwarded to OpenCode but are not persisted in Remotty's chat event log.
+  Model input capabilities are shown in the picker, and incompatible media is blocked before send.
 - **Context controls** (chat ⋮ menu): *clear context* starts a fresh agent session under the
   hood (UI history stays), *compact context* summarizes the conversation to free context
   (like `/compact`).
@@ -138,6 +145,12 @@ Starts the server (`tsx watch`, port 7710) and the Vite dev server in parallel; 
 
 ```bash
 npm run build && node scripts/smoke.mjs
+```
+
+Deterministic OpenCode question/reply/reject smoke (uses a local mock, no model call):
+
+```bash
+npm run smoke:questions
 ```
 
 OpenCode adapter e2e smoke (requires `opencode` installed; uses the free provider, zero cost):

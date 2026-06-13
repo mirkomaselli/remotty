@@ -1,4 +1,15 @@
-import type { ChatClientMsg, PermissionSuggestion, UsageSummary } from '@remotty/shared';
+import type {
+  AgentQuestionInfo,
+  ChatAttachment,
+  ChatAttachmentInput,
+  ChatClientMsg,
+  PermissionSuggestion,
+  UsageSummary,
+} from '@remotty/shared';
+
+const MAX_ATTACHMENTS = 6;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const MAX_ATTACHMENTS_BYTES = 40 * 1024 * 1024;
 import { BaseChatSession } from './base-session.js';
 import type { BaseChatDeps } from './base-session.js';
 import type { AppConfig } from '../config.js';
@@ -78,6 +89,10 @@ export class OpenCodeChatSession extends BaseChatSession {
   private readonly msgRole = new Map<string, string>();
   private readonly heldParts = new Map<string, OcPartView[]>();
   private readonly pendingPerms = new Set<string>();
+  private readonly pendingQuestions = new Map<
+    string,
+    { questions: AgentQuestionInfo[]; api: 'legacy' | 'v2' }
+  >();
 
   private sseStarted = false;
   private sseAbort: AbortController | null = null;
@@ -90,19 +105,52 @@ export class OpenCodeChatSession extends BaseChatSession {
     this.config = deps.config;
     this.oc = deps.ocServer;
     void this.denyOrphanedPermissions();
+    void this.rejectOrphanedQuestions();
   }
 
   handleClientMsg(msg: ChatClientMsg): void {
     switch (msg.type) {
       case 'user_message':
-        if (typeof msg.text === 'string' && msg.text.length > 0) {
-          this.emit({ type: 'user_message', text: msg.text });
-          if (this.pendingPerms.size === 0) this.setStatus('running');
-          void this.runPrompt(msg.text);
+        if (
+          typeof msg.text === 'string' &&
+          (msg.text.trim().length > 0 || (Array.isArray(msg.attachments) && msg.attachments.length > 0))
+        ) {
+          if (this.pendingPerms.size > 0 || this.pendingQuestions.size > 0) {
+            this.emit({
+              type: 'error',
+              message: 'Answer the pending request before sending another message.',
+            });
+            break;
+          }
+          let attachments: ChatAttachmentInput[];
+          try {
+            attachments = validateAttachments(msg.attachments);
+          } catch (err) {
+            this.emit({ type: 'error', message: errMessage(err) });
+            break;
+          }
+          const attachmentMeta: ChatAttachment[] = attachments.map(({ name, mime, size }) => ({
+            name,
+            mime,
+            size,
+          }));
+          this.emit({
+            type: 'user_message',
+            text: msg.text,
+            ...(attachmentMeta.length > 0 ? { attachments: attachmentMeta } : {}),
+          });
+          this.setStatus('running');
+          void this.runPrompt(msg.text, attachments);
         }
         break;
       case 'permission_response':
         void this.resolvePermission(msg);
+        break;
+      case 'question_response':
+        void this.resolveQuestion(msg);
+        break;
+      case 'question_reject':
+        void this.rejectQuestion(msg.requestId);
         break;
       case 'interrupt':
         void this.interrupt();
@@ -142,7 +190,7 @@ export class OpenCodeChatSession extends BaseChatSession {
 
   // ===== Prompt flow =========================================================
 
-  private async runPrompt(text: string): Promise<void> {
+  private async runPrompt(text: string, attachments: ChatAttachmentInput[]): Promise<void> {
     try {
       await this.oc.ensureStarted();
       if (!this.meta.opencodeSessionId) {
@@ -156,8 +204,19 @@ export class OpenCodeChatSession extends BaseChatSession {
       this.ensureSse();
       this.turnStartedAt = Date.now();
       this.turnHadError = false;
-      const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
       const model = this.selectedModel();
+      await this.ensureAttachmentSupport(model, attachments);
+      const parts: Array<Record<string, unknown>> = [];
+      if (text.trim()) parts.push({ type: 'text', text });
+      for (const attachment of attachments) {
+        parts.push({
+          type: 'file',
+          mime: attachment.mime,
+          filename: attachment.name,
+          url: attachment.dataUrl,
+        });
+      }
+      const body: Record<string, unknown> = { parts };
       if (model) body['model'] = model;
       const variant = await this.selectedVariant(model);
       if (variant) body['variant'] = variant;
@@ -171,6 +230,51 @@ export class OpenCodeChatSession extends BaseChatSession {
     } catch (err) {
       this.emit({ type: 'error', message: errMessage(err) });
       this.setStatus('idle');
+    }
+  }
+
+  private async ensureAttachmentSupport(
+    model: { providerID: string; modelID: string } | null,
+    attachments: ChatAttachmentInput[],
+  ): Promise<void> {
+    if (!model || attachments.length === 0) return;
+    const needsImage = attachments.some((attachment) => attachment.mime.startsWith('image/'));
+    const needsPdf = attachments.some((attachment) => attachment.mime === 'application/pdf');
+    const needsAudio = attachments.some((attachment) => attachment.mime.startsWith('audio/'));
+    const needsVideo = attachments.some((attachment) => attachment.mime.startsWith('video/'));
+    if (!needsImage && !needsPdf && !needsAudio && !needsVideo) return;
+
+    const res = await this.ocFetch('GET', '/config/providers');
+    const data = (await res.json()) as {
+      providers?: Array<{
+        id?: string;
+        models?: Record<
+          string,
+          {
+            capabilities?: {
+              input?: Partial<Record<'image' | 'pdf' | 'audio' | 'video', boolean>>;
+            };
+          }
+        >;
+      }>;
+    };
+    const entry = data.providers
+      ?.find((provider) => provider.id === model.providerID)
+      ?.models?.[model.modelID];
+    if (!entry) return;
+    const input = entry.capabilities?.input;
+    const unsupported = [
+      needsImage && input?.image !== true ? 'images' : null,
+      needsPdf && input?.pdf !== true ? 'PDFs' : null,
+      needsAudio && input?.audio !== true ? 'audio' : null,
+      needsVideo && input?.video !== true ? 'video' : null,
+    ].filter((value): value is string => value !== null);
+    if (unsupported.length > 0) {
+      throw new Error(
+        `${model.providerID}/${model.modelID} does not support ${unsupported.join(
+          ' or ',
+        )}. Choose a compatible model before sending.`,
+      );
     }
   }
 
@@ -336,7 +440,11 @@ export class OpenCodeChatSession extends BaseChatSession {
    * della UI resta, separata da un marker.
    */
   private async clearContext(): Promise<void> {
-    if (this.meta.status === 'running' || this.meta.status === 'waiting_permission') {
+    if (
+      this.meta.status === 'running' ||
+      this.meta.status === 'waiting_permission' ||
+      this.meta.status === 'waiting_input'
+    ) {
       this.emit({ type: 'error', message: 'Wait for the turn to finish before clearing the context.' });
       return;
     }
@@ -361,7 +469,11 @@ export class OpenCodeChatSession extends BaseChatSession {
 
   /** Compatta il contesto in un riassunto (POST /summarize, ex /compact). */
   private async compactContext(): Promise<void> {
-    if (this.meta.status === 'running' || this.meta.status === 'waiting_permission') {
+    if (
+      this.meta.status === 'running' ||
+      this.meta.status === 'waiting_permission' ||
+      this.meta.status === 'waiting_input'
+    ) {
       this.emit({ type: 'error', message: 'Wait for the turn to finish before compacting the context.' });
       return;
     }
@@ -464,9 +576,113 @@ export class OpenCodeChatSession extends BaseChatSession {
   }
 
   private maybeResumeRunning(): void {
-    if (this.pendingPerms.size === 0 && this.meta.status === 'waiting_permission') {
+    if (this.pendingPerms.size > 0) {
+      this.setStatus('waiting_permission');
+      return;
+    }
+    if (this.pendingQuestions.size > 0) {
+      this.setStatus('waiting_input');
+      return;
+    }
+    if (
+      this.meta.status === 'waiting_permission' ||
+      this.meta.status === 'waiting_input'
+    ) {
       this.setStatus('running');
     }
+  }
+
+  // ===== Questions ===========================================================
+
+  private async resolveQuestion(
+    msg: Extract<ChatClientMsg, { type: 'question_response' }>,
+  ): Promise<void> {
+    if (typeof msg.requestId !== 'string') return;
+    const pending = this.pendingQuestions.get(msg.requestId);
+    if (!pending) {
+      this.emit({
+        type: 'question_resolved',
+        requestId: msg.requestId,
+        outcome: 'rejected',
+      });
+      return;
+    }
+    if (
+      !Array.isArray(msg.answers) ||
+      msg.answers.length !== pending.questions.length ||
+      !msg.answers.every(
+        (answer) =>
+          Array.isArray(answer) &&
+          answer.length > 0 &&
+          answer.every((value) => typeof value === 'string' && value.trim().length > 0),
+      )
+    ) {
+      this.emit({ type: 'error', message: 'Invalid answers for the pending question' });
+      return;
+    }
+    const answers = msg.answers.map((answer) => answer.map((value) => value.trim()));
+    try {
+      await this.questionRequest(pending.api, msg.requestId, 'reply', { answers });
+      this.pendingQuestions.delete(msg.requestId);
+      this.emit({
+        type: 'question_resolved',
+        requestId: msg.requestId,
+        outcome: 'answered',
+        answers,
+      });
+      this.maybeResumeRunning();
+    } catch (err) {
+      this.emit({ type: 'error', message: `Question response failed: ${errMessage(err)}` });
+    }
+  }
+
+  private async rejectQuestion(requestId: string): Promise<void> {
+    if (typeof requestId !== 'string') return;
+    const pending = this.pendingQuestions.get(requestId);
+    if (!pending) {
+      this.emit({ type: 'question_resolved', requestId, outcome: 'rejected' });
+      return;
+    }
+    try {
+      await this.questionRequest(pending.api, requestId, 'reject');
+      this.pendingQuestions.delete(requestId);
+      this.emit({ type: 'question_resolved', requestId, outcome: 'rejected' });
+      this.maybeResumeRunning();
+    } catch (err) {
+      this.emit({ type: 'error', message: `Question rejection failed: ${errMessage(err)}` });
+    }
+  }
+
+  private async rejectOrphanedQuestions(): Promise<void> {
+    try {
+      const events = await this.log.readAfter(0);
+      const unresolved = new Set<string>();
+      for (const { ev } of events) {
+        if (ev.type === 'question_request') unresolved.add(ev.requestId);
+        else if (ev.type === 'question_resolved') unresolved.delete(ev.requestId);
+      }
+      for (const requestId of unresolved) {
+        this.emit({ type: 'question_resolved', requestId, outcome: 'rejected' });
+        void this.questionRequest('legacy', requestId, 'reject').catch(() => {});
+      }
+    } catch (err) {
+      this.logger.warn('orphaned-question reconciliation failed:', err);
+    }
+  }
+
+  private async questionRequest(
+    api: 'legacy' | 'v2',
+    requestId: string,
+    action: 'reply' | 'reject',
+    body?: { answers: string[][] },
+  ): Promise<void> {
+    const ocId = this.meta.opencodeSessionId;
+    if (!ocId) throw new Error('OpenCode session is not available');
+    const path =
+      api === 'v2'
+        ? `/api/session/${encodeURIComponent(ocId)}/question/${encodeURIComponent(requestId)}/${action}`
+        : `/question/${encodeURIComponent(requestId)}/${action}`;
+    await this.ocFetch('POST', path, body, api !== 'v2');
   }
 
   // ===== SSE =================================================================
@@ -620,7 +836,52 @@ export class OpenCodeChatSession extends BaseChatSession {
         break;
       }
 
+      case 'question.asked':
+      case 'question.v2.asked': {
+        const id = p['id'];
+        const questions = parseQuestions(p['questions']);
+        if (typeof id !== 'string' || questions.length === 0) break;
+        if (this.pendingQuestions.has(id)) break;
+        this.pendingQuestions.set(id, {
+          questions,
+          api: type === 'question.v2.asked' ? 'v2' : 'legacy',
+        });
+        this.emit({ type: 'question_request', requestId: id, questions });
+        this.setStatus('waiting_input');
+        break;
+      }
+
+      case 'question.replied':
+      case 'question.v2.replied': {
+        const requestID = p['requestID'];
+        if (typeof requestID !== 'string') break;
+        if (!this.pendingQuestions.delete(requestID)) break;
+        const answers = parseAnswers(p['answers']);
+        this.emit({
+          type: 'question_resolved',
+          requestId: requestID,
+          outcome: 'answered',
+          ...(answers ? { answers } : {}),
+        });
+        this.maybeResumeRunning();
+        break;
+      }
+
+      case 'question.rejected':
+      case 'question.v2.rejected': {
+        const requestID = p['requestID'];
+        if (typeof requestID !== 'string') break;
+        if (!this.pendingQuestions.delete(requestID)) break;
+        this.emit({ type: 'question_resolved', requestId: requestID, outcome: 'rejected' });
+        this.maybeResumeRunning();
+        break;
+      }
+
       case 'session.idle': {
+        if (this.pendingPerms.size > 0 || this.pendingQuestions.size > 0) {
+          this.maybeResumeRunning();
+          break;
+        }
         this.finalizeOpenTextParts();
         const durationMs = this.turnStartedAt ? Date.now() - this.turnStartedAt : 0;
         this.turnStartedAt = null;
@@ -657,7 +918,9 @@ export class OpenCodeChatSession extends BaseChatSession {
         this.turnHadError = true;
         this.emit({ type: 'error', message });
         // session.idle di norma segue; se non arriva, non restare bloccati su running.
-        if (this.pendingPerms.size === 0) this.setStatus('idle');
+        if (this.pendingPerms.size === 0 && this.pendingQuestions.size === 0) {
+          this.setStatus('idle');
+        }
         break;
       }
 
@@ -802,8 +1065,13 @@ export class OpenCodeChatSession extends BaseChatSession {
     return `${this.oc.baseUrl}${path}${sep}directory=${encodeURIComponent(this.meta.cwd)}`;
   }
 
-  private async ocFetch(method: string, path: string, body?: unknown): Promise<Response> {
-    const res = await fetch(this.url(path), {
+  private async ocFetch(
+    method: string,
+    path: string,
+    body?: unknown,
+    scoped = true,
+  ): Promise<Response> {
+    const res = await fetch(scoped ? this.url(path) : `${this.oc.baseUrl}${path}`, {
       method,
       headers: body !== undefined ? { 'content-type': 'application/json' } : {},
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -832,6 +1100,93 @@ function parseModel(model: string): { providerID: string; modelID: string } | nu
   const slash = model.indexOf('/');
   if (slash <= 0 || slash >= model.length - 1) return null;
   return { providerID: model.slice(0, slash), modelID: model.slice(slash + 1) };
+}
+
+function parseQuestions(value: unknown): AgentQuestionInfo[] {
+  if (!Array.isArray(value)) return [];
+  const questions: AgentQuestionInfo[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const question = raw as Record<string, unknown>;
+    if (typeof question['question'] !== 'string' || typeof question['header'] !== 'string') {
+      continue;
+    }
+    const options = Array.isArray(question['options'])
+      ? question['options']
+          .filter(
+            (option): option is Record<string, unknown> =>
+              !!option &&
+              typeof option === 'object' &&
+              typeof (option as Record<string, unknown>)['label'] === 'string' &&
+              typeof (option as Record<string, unknown>)['description'] === 'string',
+          )
+          .map((option) => ({
+            label: option['label'] as string,
+            description: option['description'] as string,
+          }))
+      : [];
+    questions.push({
+      question: question['question'],
+      header: question['header'],
+      options,
+      multiple: question['multiple'] === true,
+      custom: question['custom'] === true,
+    });
+  }
+  return questions;
+}
+
+function parseAnswers(value: unknown): string[][] | null {
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (answer) =>
+        Array.isArray(answer) && answer.every((item) => typeof item === 'string'),
+    )
+  ) {
+    return null;
+  }
+  return value as string[][];
+}
+
+function validateAttachments(value: unknown): ChatAttachmentInput[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('Invalid attachments');
+  if (value.length > MAX_ATTACHMENTS) {
+    throw new Error(`Too many attachments (maximum ${MAX_ATTACHMENTS})`);
+  }
+
+  let total = 0;
+  return value.map((raw) => {
+    if (!raw || typeof raw !== 'object') throw new Error('Invalid attachment');
+    const item = raw as Record<string, unknown>;
+    const name = typeof item['name'] === 'string' ? item['name'].trim() : '';
+    const mime = typeof item['mime'] === 'string' ? item['mime'].trim().toLowerCase() : '';
+    const size = item['size'];
+    const dataUrl = item['dataUrl'];
+    if (!name || name.length > 255) throw new Error('Invalid attachment name');
+    if (!/^[\w.+-]+\/[\w.+-]+$/.test(mime)) throw new Error(`Invalid MIME type for ${name}`);
+    if (
+      typeof size !== 'number' ||
+      !Number.isSafeInteger(size) ||
+      size < 0 ||
+      size > MAX_ATTACHMENT_BYTES
+    ) {
+      throw new Error(`${name} exceeds the 20 MB attachment limit`);
+    }
+    if (
+      typeof dataUrl !== 'string' ||
+      !dataUrl.startsWith(`data:${mime};base64,`) ||
+      dataUrl.length > Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 256
+    ) {
+      throw new Error(`Invalid attachment data for ${name}`);
+    }
+    total += size;
+    if (total > MAX_ATTACHMENTS_BYTES) {
+      throw new Error('Attachments exceed the 40 MB total limit');
+    }
+    return { name, mime, size, dataUrl };
+  });
 }
 
 function mapTokens(t: OcMessageView['tokens']): UsageSummary | undefined {

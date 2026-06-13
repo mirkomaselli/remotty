@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type {
+  ChatAttachmentInput,
   OpencodeAgentEntry,
   OpencodeAgentsResponse,
+  OpencodeModelEntry,
   OpencodeModelsResponse,
   OpencodePermissionLevel,
 } from '@remotty/shared';
@@ -12,6 +14,7 @@ import {
   initialChatState,
   type ChatItem,
   type PendingPermission,
+  type PendingQuestion,
 } from '../lib/chat-reducer';
 import { api } from '../lib/api';
 import { useWakeLock } from '../lib/use-wake-lock';
@@ -29,13 +32,23 @@ import {
   IconArrowDown,
   IconCheck,
   IconChevronLeft,
+  IconFile,
   IconKebab,
+  IconPaperclip,
   IconSend,
   IconStop,
   IconTrash,
+  IconX,
 } from '../components/icons';
 
 const EMPTY = initialChatState();
+const MAX_ATTACHMENTS = 6;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+const MAX_ATTACHMENTS_BYTES = 40 * 1024 * 1024;
+
+interface PendingAttachment extends ChatAttachmentInput {
+  id: string;
+}
 
 export default function Chat() {
   const { id = '' } = useParams();
@@ -55,10 +68,14 @@ export default function Chat() {
   const [optimisticVariant, setOptimisticVariant] = useState<string | null | undefined>(undefined);
   const [optimisticAgent, setOptimisticAgent] = useState<string | null | undefined>(undefined);
   const [text, setText] = useState('');
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [readingAttachments, setReadingAttachments] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const sockRef = useRef<ChatSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const atBottomRef = useRef(true);
 
   const meta = chat.meta ?? sessions.find((x) => x.id === id) ?? null;
@@ -70,9 +87,21 @@ export default function Chat() {
     optimisticVariant !== undefined ? optimisticVariant : (meta?.opencodeVariant ?? null);
   const currentAgent =
     optimisticAgent !== undefined ? optimisticAgent : (meta?.opencodeAgent ?? null);
-  const busy = running || chat.status === 'waiting_permission' || conn !== 'open';
+  const currentModelEntry = findModel(models, currentModel);
+  const attachmentCompatibilityError = getAttachmentCompatibilityError(
+    currentModel,
+    currentModelEntry,
+    attachments,
+  );
+  const busy =
+    running ||
+    chat.status === 'waiting_permission' ||
+    chat.status === 'waiting_input' ||
+    conn !== 'open';
 
-  useWakeLock(running || chat.status === 'waiting_permission');
+  useWakeLock(
+    running || chat.status === 'waiting_permission' || chat.status === 'waiting_input',
+  );
 
   // Socket per sessione: attach con l'ultimo seq visto, fold nello store.
   useEffect(() => {
@@ -102,7 +131,12 @@ export default function Chat() {
   // Auto-scroll in fondo se l'utente non ha scrollato verso l'alto.
   useEffect(() => {
     if (atBottomRef.current) scrollToBottom();
-  }, [chat.items, chat.pendingText, chat.pendingPermissions.length]);
+  }, [
+    chat.items,
+    chat.pendingText,
+    chat.pendingPermissions.length,
+    chat.pendingQuestions.length,
+  ]);
 
   const scrollToBottom = (): void => {
     const el = scrollRef.current;
@@ -119,22 +153,86 @@ export default function Chat() {
 
   const send = (): void => {
     const t = text.trim();
-    if (!t || !sockRef.current) return;
-    if (!sockRef.current.userMessage(t)) return; // socket chiuso: non perdere il testo
+    if (
+      (!t && attachments.length === 0) ||
+      attachmentCompatibilityError ||
+      !sockRef.current
+    ) {
+      return;
+    }
+    if (!sockRef.current.userMessage(t, attachments)) return; // socket chiuso: non perdere il testo
     setText('');
+    setAttachments([]);
+    setAttachmentError(null);
     const ta = taRef.current;
     if (ta) ta.style.height = 'auto';
     atBottomRef.current = true;
   };
 
-  const openModelSheet = (): void => {
-    setModelSheetOpen(true);
+  const addAttachments = async (files: FileList | null): Promise<void> => {
+    if (!files?.length) return;
+    setAttachmentError(null);
+    const available = MAX_ATTACHMENTS - attachments.length;
+    if (available <= 0) {
+      setAttachmentError(`You can attach up to ${MAX_ATTACHMENTS} files.`);
+      return;
+    }
+    const selected = Array.from(files).slice(0, available);
+    if (files.length > available) {
+      setAttachmentError(`Only the first ${available} files were added.`);
+    }
+    const currentBytes = attachments.reduce((sum, item) => sum + item.size, 0);
+    let acceptedBytes = currentBytes;
+    const accepted: File[] = [];
+    for (const file of selected) {
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setAttachmentError(`${file.name} exceeds the 20 MB file limit.`);
+        continue;
+      }
+      if (acceptedBytes + file.size > MAX_ATTACHMENTS_BYTES) {
+        setAttachmentError('Attachments exceed the 40 MB total limit.');
+        continue;
+      }
+      acceptedBytes += file.size;
+      accepted.push(file);
+    }
+    if (accepted.length === 0) return;
+    setReadingAttachments(true);
+    try {
+      const next = await Promise.all(
+        accepted.map(async (file, index): Promise<PendingAttachment> => {
+          const mime = file.type || 'application/octet-stream';
+          const rawDataUrl = await readFileAsDataUrl(file);
+          const dataUrl = rawDataUrl.replace(/^data:[^;]*;/, `data:${mime};`);
+          return {
+            id: `${Date.now()}-${index}-${file.name}`,
+            name: file.name,
+            mime,
+            size: file.size,
+            dataUrl,
+          };
+        }),
+      );
+      setAttachments((current) => [...current, ...next]);
+    } catch {
+      setAttachmentError('Failed to read one or more files.');
+    } finally {
+      setReadingAttachments(false);
+    }
+  };
+
+  const loadModels = (): void => {
     if (models || !meta) return;
     setModelsErr(null);
     api.opencodeModels(meta.cwd).then(
-      (r) => setModels(r),
-      (e) => setModelsErr(e instanceof Error ? e.message : 'Failed to load models'),
+      (response) => setModels(response),
+      (error) => setModelsErr(error instanceof Error ? error.message : 'Failed to load models'),
     );
+  };
+
+  const openModelSheet = (): void => {
+    setModelSheetOpen(true);
+    loadModels();
   };
 
   const selectModel = (value: string | null): void => {
@@ -193,6 +291,7 @@ export default function Chat() {
   };
 
   const pending = chat.pendingPermissions[0];
+  const pendingQuestion = chat.pendingQuestions[0];
 
   return (
     <div className="flex h-dvh flex-col pt-safe">
@@ -334,6 +433,17 @@ export default function Chat() {
         />
       )}
 
+      {pendingQuestion && !pending && (
+        <QuestionPrompt
+          key={pendingQuestion.requestId}
+          pending={pendingQuestion}
+          onSubmit={(answers) =>
+            sockRef.current?.questionResponse(pendingQuestion.requestId, answers)
+          }
+          onReject={() => sockRef.current?.rejectQuestion(pendingQuestion.requestId)}
+        />
+      )}
+
       {/* Selettore modello OpenCode */}
       <Sheet
         open={modelSheetOpen}
@@ -366,7 +476,11 @@ export default function Chat() {
                     <div key={m.id}>
                       <ModelRow
                         label={m.name}
-                        sub={m.id + (p.defaultModelID === m.id ? ' · default' : '')}
+                        sub={
+                          m.id +
+                          (p.defaultModelID === m.id ? ' · default' : '') +
+                          modelInputLabel(m)
+                        }
                         selected={currentModel === `${p.id}/${m.id}`}
                         onClick={() => selectModel(`${p.id}/${m.id}`)}
                       />
@@ -429,22 +543,96 @@ export default function Chat() {
         className="border-t border-white/5 bg-surface px-3 pt-2"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.5rem)' }}
       >
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <textarea
-            ref={taRef}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              const el = e.target;
-              el.style.height = 'auto';
-              el.style.height = `${Math.min(el.scrollHeight, 144)}px`; // ~6 righe
-            }}
-            rows={1}
-            placeholder="Type a message…"
-            enterKeyHint="enter"
-            className="max-h-36 min-h-11 flex-1 resize-none rounded-2xl border border-white/5 bg-raised px-4 py-2.5 text-[15px] leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
-          />
-          {running ? (
+        <div className="mx-auto max-w-2xl">
+          {attachmentError && (
+            <div className="mb-2 text-xs text-red-300">{attachmentError}</div>
+          )}
+          {attachmentCompatibilityError && (
+            <button
+              onClick={openModelSheet}
+              className="mb-2 w-full rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-left text-xs leading-relaxed text-amber-200"
+            >
+              {attachmentCompatibilityError} Tap to choose a compatible model.
+            </button>
+          )}
+          {attachments.length > 0 && (
+            <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="relative flex h-16 min-w-32 max-w-48 items-center gap-2 rounded-xl border border-white/10 bg-raised p-2 pr-7"
+                >
+                  {attachment.mime.startsWith('image/') ? (
+                    <img
+                      src={attachment.dataUrl}
+                      alt=""
+                      className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-white/5 text-zinc-400">
+                      <IconFile className="h-5 w-5" />
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-zinc-200">
+                      {attachment.name}
+                    </span>
+                    <span className="block text-[10px] text-zinc-500">
+                      {formatFileSize(attachment.size)}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() =>
+                      setAttachments((current) =>
+                        current.filter((item) => item.id !== attachment.id),
+                      )
+                    }
+                    className="absolute top-1 right-1 grid h-6 w-6 place-items-center rounded-full text-zinc-500 active:bg-white/10"
+                    aria-label={`Remove ${attachment.name}`}
+                  >
+                    <IconX className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void addAttachments(event.target.files);
+                event.target.value = '';
+              }}
+            />
+            <button
+              onClick={() => {
+                loadModels();
+                fileRef.current?.click();
+              }}
+              disabled={busy || readingAttachments || attachments.length >= MAX_ATTACHMENTS}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/5 bg-raised text-zinc-300 active:bg-white/5 disabled:opacity-30"
+              aria-label="Attach files"
+            >
+              <IconPaperclip className="h-5 w-5" />
+            </button>
+            <textarea
+              ref={taRef}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                const el = e.target;
+                el.style.height = 'auto';
+                el.style.height = `${Math.min(el.scrollHeight, 144)}px`; // ~6 righe
+              }}
+              rows={1}
+              placeholder={attachments.length > 0 ? 'Add a message…' : 'Type a message…'}
+              enterKeyHint="enter"
+              className="max-h-36 min-h-11 flex-1 resize-none rounded-2xl border border-white/5 bg-raised px-4 py-2.5 text-[15px] leading-relaxed text-zinc-100 placeholder:text-zinc-600 focus:border-accent/40 focus:outline-none"
+            />
+            {running ? (
             <button
               onClick={() => sockRef.current?.interrupt()}
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-500/90 text-white active:opacity-80"
@@ -455,13 +643,21 @@ export default function Chat() {
           ) : (
             <button
               onClick={send}
-              disabled={!text.trim() || conn !== 'open' || chat.status === 'waiting_permission'}
+              disabled={
+                (!text.trim() && attachments.length === 0) ||
+                readingAttachments ||
+                !!attachmentCompatibilityError ||
+                conn !== 'open' ||
+                chat.status === 'waiting_permission' ||
+                chat.status === 'waiting_input'
+              }
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent text-black active:opacity-80 disabled:opacity-30"
               aria-label="Send"
             >
               <IconSend className="h-5 w-5" />
             </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -481,10 +677,56 @@ function findModel(models: OpencodeModelsResponse | null, value: string | null) 
   );
 }
 
+function getAttachmentCompatibilityError(
+  model: string | null,
+  entry: OpencodeModelEntry | null,
+  attachments: PendingAttachment[],
+): string | null {
+  if (!model || attachments.length === 0) return null;
+  const required = new Set<string>();
+  if (attachments.some((item) => item.mime.startsWith('image/'))) required.add('image');
+  if (attachments.some((item) => item.mime === 'application/pdf')) required.add('pdf');
+  if (attachments.some((item) => item.mime.startsWith('audio/'))) required.add('audio');
+  if (attachments.some((item) => item.mime.startsWith('video/'))) required.add('video');
+  if (required.size === 0) return null;
+  if (!entry) return `Checking attachment support for ${model}.`;
+  const unsupported = [...required].filter(
+    (kind) => !entry.input[kind as keyof OpencodeModelEntry['input']],
+  );
+  if (unsupported.length === 0) return null;
+  return `${entry.name} does not support ${unsupported.join(' or ')} input.`;
+}
+
+function modelInputLabel(model: OpencodeModelEntry): string {
+  const supported = [
+    model.input.image ? 'image' : null,
+    model.input.pdf ? 'PDF' : null,
+    model.input.audio ? 'audio' : null,
+    model.input.video ? 'video' : null,
+  ].filter((value): value is string => value !== null);
+  return supported.length > 0 ? ` · ${supported.join(' + ')}` : '';
+}
+
 function modelShortLabel(model: string | null): string {
   if (!model) return 'auto';
   const slash = model.indexOf('/');
   return slash >= 0 ? model.slice(slash + 1) : model;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('read failed'));
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ModelRow({
@@ -640,8 +882,22 @@ function ChatItemView({ item }: { item: ChatItem }) {
     case 'user':
       return (
         <div className="flex justify-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap break-words text-emerald-950">
-            {item.text}
+          <div className="max-w-[85%] space-y-2 rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[15px] leading-relaxed text-emerald-950">
+            {item.attachments.length > 0 && (
+              <div className="space-y-1">
+                {item.attachments.map((attachment, index) => (
+                  <div
+                    key={`${attachment.name}-${index}`}
+                    className="flex items-center gap-2 rounded-lg bg-black/10 px-2 py-1.5 text-xs"
+                  >
+                    <IconFile className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                    <span className="shrink-0 opacity-60">{formatFileSize(attachment.size)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {item.text && <div className="whitespace-pre-wrap break-words">{item.text}</div>}
           </div>
         </div>
       );
@@ -741,6 +997,155 @@ function PermissionPrompt({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function QuestionPrompt({
+  pending,
+  onSubmit,
+  onReject,
+}: {
+  pending: PendingQuestion;
+  onSubmit: (answers: string[][]) => void;
+  onReject: () => void;
+}) {
+  const [selected, setSelected] = useState<string[][]>(() =>
+    pending.questions.map(() => []),
+  );
+  const [custom, setCustom] = useState<string[]>(() => pending.questions.map(() => ''));
+
+  const toggleOption = (questionIndex: number, label: string, multiple: boolean): void => {
+    setSelected((current) =>
+      current.map((answer, index) => {
+        if (index !== questionIndex) return answer;
+        if (!multiple) return [label];
+        return answer.includes(label)
+          ? answer.filter((value) => value !== label)
+          : [...answer, label];
+      }),
+    );
+    if (!multiple) {
+      setCustom((current) =>
+        current.map((value, index) => (index === questionIndex ? '' : value)),
+      );
+    }
+  };
+
+  const answers = pending.questions.map((question, index) => {
+    const freeText = custom[index]?.trim() ?? '';
+    if (!question.multiple && freeText) return [freeText];
+    return freeText ? [...(selected[index] ?? []), freeText] : (selected[index] ?? []);
+  });
+  const complete = answers.every((answer) => answer.length > 0);
+
+  return (
+    <div className="max-h-[58dvh] overflow-y-auto border-t border-sky-400/20 bg-[#09131a] px-4 py-3">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />
+          <span className="text-sm font-semibold text-sky-200">Agent needs your input</span>
+        </div>
+
+        <div className="space-y-4">
+          {pending.questions.map((question, questionIndex) => (
+            <fieldset key={questionIndex}>
+              <legend className="mb-2 w-full">
+                <span className="block text-[11px] font-semibold tracking-wide text-sky-300 uppercase">
+                  {question.header}
+                </span>
+                <span className="mt-0.5 block text-sm leading-relaxed text-zinc-200">
+                  {question.question}
+                </span>
+                {question.multiple && (
+                  <span className="mt-0.5 block text-[11px] text-zinc-500">
+                    Select one or more options
+                  </span>
+                )}
+              </legend>
+
+              {question.options.length > 0 && (
+                <div className="space-y-1.5">
+                  {question.options.map((option) => {
+                    const checked = selected[questionIndex]?.includes(option.label) ?? false;
+                    return (
+                      <button
+                        key={option.label}
+                        type="button"
+                        onClick={() =>
+                          toggleOption(questionIndex, option.label, question.multiple)
+                        }
+                        className={`flex min-h-11 w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left ${
+                          checked
+                            ? 'border-sky-400/50 bg-sky-400/10'
+                            : 'border-white/10 bg-raised active:bg-white/5'
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center border ${
+                            question.multiple ? 'rounded' : 'rounded-full'
+                          } ${
+                            checked
+                              ? 'border-sky-400 bg-sky-400 text-black'
+                              : 'border-zinc-600'
+                          }`}
+                        >
+                          {checked && <IconCheck className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-zinc-200">
+                            {option.label}
+                          </span>
+                          {option.description && (
+                            <span className="mt-0.5 block text-xs leading-relaxed text-zinc-500">
+                              {option.description}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {question.custom && (
+                <input
+                  value={custom[questionIndex] ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCustom((current) =>
+                      current.map((item, index) => (index === questionIndex ? value : item)),
+                    );
+                    if (!question.multiple && value.trim()) {
+                      setSelected((current) =>
+                        current.map((item, index) => (index === questionIndex ? [] : item)),
+                      );
+                    }
+                  }}
+                  placeholder="Type a custom answer…"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-raised px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-400/50 focus:outline-none"
+                />
+              )}
+            </fieldset>
+          ))}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={() => onSubmit(answers)}
+            disabled={!complete}
+            className="min-h-11 flex-1 rounded-xl bg-sky-400 text-sm font-semibold text-sky-950 active:opacity-80 disabled:opacity-30"
+          >
+            Submit
+          </button>
+          <button
+            onClick={onReject}
+            className="min-h-11 flex-1 rounded-xl border border-white/10 bg-raised text-sm font-semibold text-zinc-200 active:bg-white/5"
+          >
+            Reject
+          </button>
+        </div>
       </div>
     </div>
   );

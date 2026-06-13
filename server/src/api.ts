@@ -87,6 +87,9 @@ export function createApiRouter(deps: {
               id?: string;
               name?: string;
               variants?: Record<string, { disabled?: boolean }>;
+              capabilities?: {
+                input?: Partial<Record<'text' | 'audio' | 'image' | 'video' | 'pdf', boolean>>;
+              };
             }
           >;
         }>;
@@ -110,6 +113,13 @@ export function createApiRouter(deps: {
                     .filter(([, options]) => options?.disabled !== true)
                     .map(([variant]) => variant)
                     .sort(compareVariants),
+                  input: {
+                    text: m.capabilities?.input?.text === true,
+                    audio: m.capabilities?.input?.audio === true,
+                    image: m.capabilities?.input?.image === true,
+                    video: m.capabilities?.input?.video === true,
+                    pdf: m.capabilities?.input?.pdf === true,
+                  },
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name)),
             };

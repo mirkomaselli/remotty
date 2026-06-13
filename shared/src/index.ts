@@ -9,6 +9,7 @@ export type SessionStatus =
   | 'created' // chat: no query started yet; terminal: not yet spawned
   | 'running' // agent is working / pty alive
   | 'waiting_permission' // chat only: a permission_request is pending
+  | 'waiting_input' // chat only: the agent asked the user one or more questions
   | 'idle' // chat only: turn finished, waiting for next user message
   | 'exited' // terminal process or chat process ended
   | 'error';
@@ -85,9 +86,33 @@ export interface PermissionSuggestion {
   [key: string]: unknown;
 }
 
+export interface AgentQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface AgentQuestionInfo {
+  question: string;
+  header: string;
+  options: AgentQuestionOption[];
+  multiple: boolean;
+  custom: boolean;
+}
+
+export interface ChatAttachment {
+  name: string;
+  mime: string;
+  size: number;
+}
+
+export interface ChatAttachmentInput extends ChatAttachment {
+  /** Base64 data URL, forwarded to OpenCode but never persisted in the event log. */
+  dataUrl: string;
+}
+
 export type ChatClientMsg =
   | { type: 'attach'; afterSeq: number }
-  | { type: 'user_message'; text: string }
+  | { type: 'user_message'; text: string; attachments?: ChatAttachmentInput[] }
   | {
       type: 'permission_response';
       requestId: string;
@@ -96,6 +121,8 @@ export type ChatClientMsg =
       updatedInput?: unknown;
       updatedPermissions?: unknown[];
     }
+  | { type: 'question_response'; requestId: string; answers: string[][] }
+  | { type: 'question_reject'; requestId: string }
   | { type: 'interrupt' }
   /** OpenCode: 'providerID/modelID', null = torna al default. */
   | { type: 'set_model'; model: string | null }
@@ -123,7 +150,7 @@ export interface UsageSummary {
 export type ChatEvent =
   | { type: 'status'; status: SessionStatus }
   | { type: 'meta'; meta: SessionMeta }
-  | { type: 'user_message'; text: string }
+  | { type: 'user_message'; text: string; attachments?: ChatAttachment[] }
   | { type: 'text_delta'; text: string }
   | { type: 'assistant_message'; blocks: AssistantBlock[] }
   | { type: 'tool_result'; toolUseId: string; content: string; isError: boolean }
@@ -137,6 +164,13 @@ export type ChatEvent =
       suggestions?: PermissionSuggestion[];
     }
   | { type: 'permission_resolved'; requestId: string; behavior: 'allow' | 'deny' }
+  | { type: 'question_request'; requestId: string; questions: AgentQuestionInfo[] }
+  | {
+      type: 'question_resolved';
+      requestId: string;
+      outcome: 'answered' | 'rejected';
+      answers?: string[][];
+    }
   | {
       type: 'result';
       subtype: string;
@@ -199,6 +233,13 @@ export interface OpencodeModelEntry {
   name: string;
   /** Variants abilitate dichiarate da OpenCode per questo modello. */
   variants: string[];
+  input: {
+    text: boolean;
+    audio: boolean;
+    image: boolean;
+    video: boolean;
+    pdf: boolean;
+  };
 }
 
 export interface OpencodeProviderInfo {

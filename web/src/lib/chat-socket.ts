@@ -3,6 +3,7 @@
 
 import { isChatEnvelope } from '@remotty/shared';
 import type {
+  ChatAttachmentInput,
   ChatClientMsg,
   ChatEventEnvelope,
   ChatServerMsg,
@@ -88,8 +89,12 @@ export class ChatSocket {
     return this.sock.send(JSON.stringify(msg));
   }
 
-  userMessage(text: string): boolean {
-    return this.send({ type: 'user_message', text });
+  userMessage(text: string, attachments: ChatAttachmentInput[] = []): boolean {
+    return this.send({
+      type: 'user_message',
+      text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    });
   }
 
   permissionResponse(
@@ -98,6 +103,14 @@ export class ChatSocket {
     extra?: { message?: string; updatedInput?: unknown; updatedPermissions?: unknown[] },
   ): boolean {
     return this.send({ type: 'permission_response', requestId, behavior, ...extra });
+  }
+
+  questionResponse(requestId: string, answers: string[][]): boolean {
+    return this.send({ type: 'question_response', requestId, answers });
+  }
+
+  rejectQuestion(requestId: string): boolean {
+    return this.send({ type: 'question_reject', requestId });
   }
 
   interrupt(): boolean {

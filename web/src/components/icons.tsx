@@ -68,6 +68,19 @@ export const IconTrash = (p: IconProps) =>
     </>,
     p,
   );
+export const IconPaperclip = (p: IconProps) =>
+  svg(
+    <path d="M21.4 11.6l-8.9 8.9a6 6 0 01-8.5-8.5l9.6-9.6a4 4 0 015.7 5.7l-9.6 9.6a2 2 0 01-2.8-2.8l8.9-8.9" />,
+    p,
+  );
+export const IconFile = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M6 2h8l4 4v16H6z" />
+      <path d="M14 2v5h5" />
+    </>,
+    p,
+  );
 export const IconGit = (p: IconProps) =>
   svg(
     <>

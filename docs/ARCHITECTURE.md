@@ -78,14 +78,15 @@ JSONL log (`data/chat/<sessionId>.jsonl`) before sending. On attach the client s
 `{ type: 'attached', lastSeq }` marker, then live events. This makes reconnects lossless
 (mobile browsers kill sockets on screen lock — this is the norm, not the exception).
 
-Client → server: `attach`, `user_message`, `permission_response`, `interrupt`, `set_model`,
-`set_variant`, `set_agent`, `clear_context`, `compact_context`, `ping` (server replies `pong`,
-outside the seq stream).
+Client → server: `attach`, `user_message` (text plus optional base64 data-URL attachments),
+`permission_response`, `question_response`,
+`question_reject`, `interrupt`, `set_model`, `set_variant`, `set_agent`, `clear_context`,
+`compact_context`, `ping` (server replies `pong`, outside the seq stream).
 
 Server → client: `ChatEventEnvelope = { seq, ev: ChatEvent }` where ChatEvent is one of:
 `status`, `meta`, `user_message` (echo), `text_delta`, `assistant_message` (finalized blocks:
 text + tool_use), `tool_result`, `permission_request`, `permission_resolved`, `result`
-(cost/usage/duration), `error`, `notice`.
+(cost/usage/duration), `question_request`, `question_resolved`, `error`, `notice`.
 
 ### Terminal protocol (binary frames, 1-byte opcode prefix — ttyd style)
 
@@ -124,6 +125,14 @@ server.
     completed/error.
   - `permission.asked` → `permission_request`; replies go back via REST (once / always /
     reject). "Always allow" surfaces as an `opencode_always` suggestion with the rule patterns.
+  - `question.asked` / `question.v2.asked` → `question_request`; replies preserve the ordered
+    `string[][]` answer shape required by OpenCode, including multiple choices and custom text.
+    While pending, the session uses the distinct `waiting_input` status.
+  - Attachments are validated (6 files, 20 MB each, 40 MB total) and mapped to OpenCode
+    `FilePartInput` entries (`type`, `mime`, `filename`, `url`). Only attachment metadata is
+    emitted to the replayable event log; base64 contents remain confined to the prompt request.
+    Explicitly selected models are checked against OpenCode's image/PDF/audio/video input
+    capabilities in both the composer and server before `prompt_async`.
   - `session.idle` → `result` (+status `idle`); `session.error` → `error` event.
 - SSE loop reconnects automatically on drop (1.5s retry) while the session is live.
 - **Model selection**: `set_model` ('providerID/modelID' or null) and `set_variant` are persisted
@@ -170,6 +179,8 @@ Views:
    collapsible cards (icon + tool name + one-line input summary; expand → pretty-printed input
    and result, monospace, result truncated with "show more"); permission requests as a sticky
    bottom sheet with Allow / Deny (+ "always allow" suggestion buttons from `opencode_always`);
+   agent questions as single/multiple-choice controls with optional custom text and reject;
+   mobile attachment picker with image previews, file chips and per-file removal;
    composer (auto-growing textarea, send button, Stop button while `running`); header: title,
    status dot, model/reasoning picker, kebab → agent picker, compact/clear context, delete session.
    Cost/turns shown
