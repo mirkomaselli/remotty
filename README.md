@@ -97,6 +97,27 @@ Push notifications require iOS/iPadOS 16.4 or later, HTTPS, and the Home Screen 
 Open Remotty from its installed icon, then tap the bell on the Home screen and allow notifications.
 VAPID keys and browser subscriptions are generated automatically and stored in `data/push.json`.
 
+### Android app
+
+The Android wrapper uses Capacitor and keeps the existing React UI. From Remotty's Home screen
+in a desktop browser, select the QR button, then scan the code from the Android app. The app
+stores the server URL and uses the QR token only for the initial login.
+
+Build or refresh the native project:
+
+```bash
+npm run android:build
+```
+
+Building the APK requires Android SDK 35 and JDK 21. On macOS the build script automatically
+uses the JDK bundled with Android Studio. Set `ANDROID_HOME` or `android/local.properties` to
+the installed SDK if Android Studio has not configured it.
+
+The debug APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. The wrapper
+supports HTTPS/Tailscale and plain LAN HTTP; HTTPS remains recommended for transport security
+and browser push support. The Android wrapper hides the PWA Web Push controls because that flow
+does not apply inside Capacitor; native Android notifications are not implemented yet.
+
 ## Tailscale (recommended)
 
 With Tailscale on both PC and phone you get valid HTTPS (installable PWA, reliable wake lock and

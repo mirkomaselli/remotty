@@ -7,6 +7,7 @@ import type {
   CreateSessionRequest,
   OpencodeAgentsResponse,
   OpencodeModelsResponse,
+  PairingConfig,
   ProjectInfo,
   PushConfigResponse,
   PushDiagnosticInput,
@@ -59,6 +60,7 @@ export const api = {
     req<void>('/api/auth/login', { method: 'POST', body: JSON.stringify({ token }) }),
   me: () => req<{ ok: boolean }>('/api/auth/me'),
   config: () => req<ServerConfig>('/api/config'),
+  pairing: () => req<PairingConfig>('/api/pairing'),
   browse: (path?: string) =>
     req<BrowseResult>(`/api/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   projects: () => req<ProjectInfo[]>('/api/projects'),

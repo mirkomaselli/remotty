@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-android/
 *.tsbuildinfo
 
 # Runtime state (chat logs, sessions)

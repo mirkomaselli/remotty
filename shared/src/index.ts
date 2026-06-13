@@ -294,6 +294,12 @@ export interface PushDiagnosticInput {
   errorMessage?: string;
 }
 
+export interface PairingConfig {
+  version: 1;
+  serverUrl: string;
+  token: string;
+}
+
 export interface HealthResponse {
   ok: boolean;
   version: string;

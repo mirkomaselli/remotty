@@ -8,13 +8,17 @@ import Home from './views/Home';
 import Chat from './views/Chat';
 import Term from './views/Term';
 import { appAsset } from './lib/base-path';
+import { isNativeLocalShell } from './lib/native-pairing';
+import NativeSetup from './views/NativeSetup';
 
 export default function App() {
   const authed = useStore((s) => s.authed);
+  const nativeSetup = isNativeLocalShell();
 
   // Probe iniziale: /api/auth/me decide login vs app. Su 401 il wrapper fetch
   // imposta authed=false; su errore di rete riprova finché il server risponde.
   useEffect(() => {
+    if (nativeSetup) return;
     let dead = false;
     const probe = async (): Promise<void> => {
       try {
@@ -28,7 +32,7 @@ export default function App() {
     return () => {
       dead = true;
     };
-  }, []);
+  }, [nativeSetup]);
 
   // Config quando autenticati.
   useEffect(() => {
@@ -38,6 +42,8 @@ export default function App() {
       .then((c) => useStore.getState().setConfig(c))
       .catch(() => {});
   }, [authed]);
+
+  if (nativeSetup) return <NativeSetup />;
 
   if (authed === null) {
     return (

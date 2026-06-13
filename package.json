@@ -17,9 +17,21 @@
     "dev": "npm run build -w @remotty/shared && concurrently -n server,web -c blue,green \"npm run dev -w @remotty/server\" \"npm run dev -w @remotty/web\"",
     "start": "npm run start -w @remotty/server",
     "typecheck": "npm run build -w @remotty/shared && npm run typecheck -w @remotty/server && npm run typecheck -w @remotty/web",
-    "smoke:questions": "node scripts/smoke-questions.mjs"
+    "smoke:questions": "node scripts/smoke-questions.mjs",
+    "android:sync": "node scripts/sync-android.mjs",
+    "android:build": "node scripts/build-android.mjs",
+    "android:open": "npx cap open android"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.6.0",
+    "@types/qrcode": "^1.5.6",
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.0",
+    "@capacitor/barcode-scanner": "^2.2.6",
+    "@capacitor/core": "^7.6.0",
+    "@capacitor/preferences": "^7.0.4",
+    "qrcode": "^1.5.4"
   }
 }

@@ -22,11 +22,14 @@ import {
   subscriptionInput,
 } from '../lib/push-notifications';
 import { appAsset } from '../lib/base-path';
+import PairDeviceSheet from '../components/PairDeviceSheet';
+import { isNativeApp, scanAndConnect } from '../lib/native-pairing';
 
 type NotificationState = 'checking' | 'unsupported' | 'off' | 'on' | 'denied' | 'busy' | 'error';
 
 export default function Home() {
   const navigate = useNavigate();
+  const nativeApp = isNativeApp();
   const sessions = useStore((s) => s.sessions);
   const sessionsLoaded = useStore((s) => s.sessionsLoaded);
   const config = useStore((s) => s.config);
@@ -37,6 +40,7 @@ export default function Home() {
     useState<NotificationState>('checking');
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const [pushPublicKey, setPushPublicKey] = useState<string | null>(null);
+  const [pairingOpen, setPairingOpen] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -63,6 +67,7 @@ export default function Home() {
   }, [refresh]);
 
   useEffect(() => {
+    if (nativeApp) return;
     let cancelled = false;
     const load = async (): Promise<void> => {
       if (!pushSupported()) {
@@ -98,7 +103,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [nativeApp]);
 
   const toggleNotifications = async (): Promise<void> => {
     if (notificationState === 'busy' || notificationState === 'checking') return;
@@ -201,30 +206,43 @@ export default function Home() {
             />
             {reachable ? 'connected' : 'offline'}
           </span>
+          {!nativeApp && (
+            <button
+              onClick={() => void toggleNotifications()}
+              disabled={notificationState === 'checking' || notificationState === 'busy'}
+              className={`relative grid h-11 w-11 place-items-center rounded-full active:bg-white/5 disabled:opacity-40 ${
+                notificationState === 'on' ? 'text-accent' : 'text-zinc-500'
+              }`}
+              aria-label={
+                notificationState === 'on' ? 'Disable notifications' : 'Enable notifications'
+              }
+              title={
+                notificationState === 'on'
+                  ? 'Notification settings · enabled'
+                  : 'Notification settings · disabled'
+              }
+            >
+              <IconBell className="h-5 w-5" />
+              {notificationState === 'on' && (
+                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" />
+              )}
+            </button>
+          )}
           <button
-            onClick={() => void toggleNotifications()}
-            disabled={notificationState === 'checking' || notificationState === 'busy'}
-            className={`relative grid h-11 w-11 place-items-center rounded-full active:bg-white/5 disabled:opacity-40 ${
-              notificationState === 'on' ? 'text-accent' : 'text-zinc-500'
-            }`}
-            aria-label={
-              notificationState === 'on' ? 'Disable notifications' : 'Enable notifications'
-            }
-            title={
-              notificationState === 'on'
-                ? 'Notification settings · enabled'
-                : 'Notification settings · disabled'
-            }
+            onClick={() => {
+              if (nativeApp) void scanAndConnect();
+              else setPairingOpen(true);
+            }}
+            className="grid h-11 w-11 place-items-center rounded-full text-zinc-500 active:bg-white/5"
+            aria-label={nativeApp ? 'Scan a different server' : 'Connect Android app'}
+            title={nativeApp ? 'Scan a different server' : 'Connect Android app'}
           >
-            <IconBell className="h-5 w-5" />
-            {notificationState === 'on' && (
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" />
-            )}
+            <QrIcon className="h-5 w-5" />
           </button>
         </div>
       </header>
 
-      {notificationMessage && (
+      {!nativeApp && notificationMessage && (
         <button
           onClick={() => setNotificationMessage(null)}
           className="mx-4 mb-1 rounded-xl border border-white/5 bg-raised px-3 py-2 text-left text-xs leading-relaxed text-zinc-300"
@@ -272,7 +290,22 @@ export default function Home() {
       </button>
 
       <NewSessionSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <PairDeviceSheet open={pairingOpen} onClose={() => setPairingOpen(false)} />
     </div>
+  );
+}
+
+function QrIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className}
+    >
+      <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v6h-2zM14 18h2v2h-2z" />
+    </svg>
   );
 }
 

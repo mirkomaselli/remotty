@@ -8,6 +8,7 @@ import type {
   OpencodeAgentsResponse,
   OpencodePermissionLevel,
   OpencodeModelsResponse,
+  PairingConfig,
   PushConfigResponse,
   PushDiagnosticInput,
   PushSubscriptionInput,
@@ -46,6 +47,14 @@ export function createApiRouter(deps: {
 
   router.get('/auth/me', (_req, res) => res.json({ ok: true }));
   router.get('/config', (_req, res) => res.json(toServerConfig(config)));
+  router.get('/pairing', (req, res) => {
+    const body: PairingConfig = {
+      version: 1,
+      serverUrl: `${req.protocol}://${req.get('host') ?? ''}${config.basePath}`,
+      token: config.authToken ?? '',
+    };
+    res.set('Cache-Control', 'no-store').json(body);
+  });
   router.get('/push/config', (_req, res) => {
     const body: PushConfigResponse = { supported: true, publicKey: push.publicKey() };
     res.json(body);

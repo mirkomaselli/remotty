@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Remotty</string>
+    <string name="title_activity_main">Remotty</string>
+    <string name="package_name">app.remotty.mobile</string>
+    <string name="custom_url_scheme">app.remotty.mobile</string>
+</resources>

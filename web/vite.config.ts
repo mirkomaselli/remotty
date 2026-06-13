@@ -5,6 +5,9 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   base: process.env.REMOTTY_BASE_PATH || '/remotty/',
   plugins: [react(), tailwindcss()],
+  build: {
+    outDir: process.env.REMOTTY_CAPACITOR_BUILD === '1' ? 'dist-android' : 'dist',
+  },
   server: {
     proxy: {
       // HTTP + WS verso il server @remotty/server

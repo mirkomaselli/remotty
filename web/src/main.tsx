@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 import { BASE_PATH, appAsset } from './lib/base-path';
+import { redirectToSavedServer } from './lib/native-pairing';
 
 // SW solo in contesto sicuro (https / localhost): su HTTP LAN non è disponibile.
 if (window.isSecureContext && 'serviceWorker' in navigator) {
@@ -21,8 +22,13 @@ const clearBadge = (): void => {
 document.addEventListener('visibilitychange', clearBadge);
 clearBadge();
 
-createRoot(document.getElementById('root')!).render(
-  <BrowserRouter basename={BASE_PATH || undefined}>
-    <App />
-  </BrowserRouter>,
-);
+void redirectToSavedServer()
+  .catch(() => false)
+  .then((redirecting) => {
+    if (redirecting) return;
+    createRoot(document.getElementById('root')!).render(
+      <BrowserRouter basename={BASE_PATH || undefined}>
+        <App />
+      </BrowserRouter>,
+    );
+  });

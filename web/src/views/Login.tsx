@@ -4,6 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useStore } from '../store';
 import { appAsset } from '../lib/base-path';
+import {
+  clearPairingFragment,
+  isNativeApp,
+  pairingFromFragment,
+  scanAndConnect,
+} from '../lib/native-pairing';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,10 +17,37 @@ export default function Login() {
   const [token, setToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
 
   useEffect(() => {
     if (authed === true) navigate('/', { replace: true });
   }, [authed, navigate]);
+
+  useEffect(() => {
+    const pairing = pairingFromFragment();
+    if (!pairing) return;
+    clearPairingFragment();
+    setBusy(true);
+    api
+      .login(pairing.token)
+      .then(() => {
+        useStore.getState().setAuthed(true);
+        navigate('/', { replace: true });
+      })
+      .catch(() => setError('The pairing token is not valid. Scan a new code.'))
+      .finally(() => setBusy(false));
+  }, [navigate]);
+
+  const scan = async (): Promise<void> => {
+    setScanBusy(true);
+    setError(null);
+    try {
+      await scanAndConnect();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not scan the QR code.');
+      setScanBusy(false);
+    }
+  };
 
   const submit = async (e: FormEvent): Promise<void> => {
     e.preventDefault();
@@ -55,6 +88,16 @@ export default function Login() {
         >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+        {isNativeApp() && (
+          <button
+            type="button"
+            onClick={() => void scan()}
+            disabled={scanBusy || busy}
+            className="w-full rounded-2xl border border-white/10 py-3.5 text-sm font-medium text-zinc-300 active:bg-white/5 disabled:opacity-40"
+          >
+            {scanBusy ? 'Opening camera...' : 'Scan a different server'}
+          </button>
+        )}
       </form>
     </div>
   );
