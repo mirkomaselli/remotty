@@ -14,13 +14,15 @@ import { OpenCodeServer } from './opencode/server.js';
 import { createApiRouter } from './api.js';
 import { setupWebSocket } from './ws.js';
 import { createLogger } from './logger.js';
+import { PushService } from './push-service.js';
 
 const logger = createLogger('server');
 
 const config = loadConfig();
 const store = new Store(config.dataDir);
 const ocServer = new OpenCodeServer(config.opencodePort, createLogger('opencode'));
-const manager = new SessionManager(store, config, ocServer);
+const push = new PushService(config.dataDir, createLogger('push'));
+const manager = new SessionManager(store, config, ocServer, push);
 const auth = createAuth(config.authToken);
 
 const app = express();
@@ -31,17 +33,29 @@ app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-app.use('/api', createApiRouter({ config, store, manager, auth, ocServer }));
+const apiRouter = createApiRouter({ config, store, manager, auth, ocServer, push });
+app.use('/api', apiRouter);
+if (config.basePath) app.use(`${config.basePath}/api`, apiRouter);
 
 // --- static web app (production) ---------------------------------------------
 // Both src/index.ts (tsx) and dist/index.js resolve ../../web/dist to <repo>/web/dist.
 const webDist = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const indexHtml = path.join(webDist, 'index.html');
 if (existsSync(indexHtml)) {
-  app.use(express.static(webDist));
-  // SPA fallback for client-side routes (never swallow /api).
+  const serveWeb = express.static(webDist);
+  if (config.basePath) {
+    app.get('/', (_req, res) => res.redirect(`${config.basePath}/`));
+    app.use(config.basePath, serveWeb);
+  } else {
+    app.use(serveWeb);
+  }
+  // SPA fallback for client-side routes.
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+    const inWebApp =
+      !config.basePath ||
+      req.path === config.basePath ||
+      req.path.startsWith(`${config.basePath}/`);
+    if (req.method !== 'GET' || !inWebApp || req.path.includes('/api/')) {
       next();
       return;
     }
@@ -60,11 +74,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const server = http.createServer(app);
-setupWebSocket(server, { auth, manager, store });
+setupWebSocket(server, { auth, manager, store, basePath: config.basePath });
 
 server.listen(config.port, config.host, () => {
   logger.info(`remotty v${config.version} (${config.platform}) — data dir: ${config.dataDir}`);
   logger.info(`detected CLIs: opencode=${config.clis.opencode}`);
+  if (config.basePath) logger.info(`web base path: ${config.basePath}`);
   for (const url of reachableUrls(config.host, config.port)) {
     logger.info(`  → ${url}`);
   }
@@ -97,6 +112,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     logger.info(`${sig} received — flushing state and shutting down`);
     ocServer.stopSync();
+    push.flushSync();
     store.flushSync();
     process.exit(0);
   });

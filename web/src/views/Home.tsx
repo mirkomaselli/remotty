@@ -6,7 +6,24 @@ import { useStore } from '../store';
 import { basename, fmtCost, relTime } from '../lib/format';
 import StatusBadge from '../components/StatusBadge';
 import NewSessionSheet from '../components/NewSessionSheet';
-import { IconChat, IconKebab, IconPlus, IconTerminal, IconTrash } from '../components/icons';
+import {
+  IconBell,
+  IconChat,
+  IconKebab,
+  IconPlus,
+  IconTerminal,
+  IconTrash,
+} from '../components/icons';
+import {
+  applicationServerKey,
+  iosNeedsHomeScreenInstall,
+  pushEnvironment,
+  pushSupported,
+  subscriptionInput,
+} from '../lib/push-notifications';
+import { appAsset } from '../lib/base-path';
+
+type NotificationState = 'checking' | 'unsupported' | 'off' | 'on' | 'denied' | 'busy' | 'error';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -16,6 +33,10 @@ export default function Home() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [reachable, setReachable] = useState(true);
+  const [notificationState, setNotificationState] =
+    useState<NotificationState>('checking');
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [pushPublicKey, setPushPublicKey] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -41,6 +62,116 @@ export default function Home() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (): Promise<void> => {
+      if (!pushSupported()) {
+        if (!cancelled) {
+          setNotificationState('unsupported');
+          setNotificationMessage(
+            iosNeedsHomeScreenInstall()
+              ? 'Install Remotty on the Home Screen to enable notifications.'
+              : 'Push notifications require HTTPS and browser support.',
+          );
+        }
+        return;
+      }
+      try {
+        const [pushConfig, registration] = await Promise.all([
+          api.pushConfig(),
+          navigator.serviceWorker.ready,
+        ]);
+        const subscription = await registration.pushManager.getSubscription();
+        if (cancelled) return;
+        setPushPublicKey(pushConfig.publicKey);
+        if (subscription) {
+          await api.subscribePush(subscriptionInput(subscription));
+          if (!cancelled) setNotificationState('on');
+        } else {
+          setNotificationState(Notification.permission === 'denied' ? 'denied' : 'off');
+        }
+      } catch {
+        if (!cancelled) setNotificationState('error');
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleNotifications = async (): Promise<void> => {
+    if (notificationState === 'busy' || notificationState === 'checking') return;
+    setNotificationMessage(null);
+    void api.pushDiagnostic({ stage: 'toggle', ...pushEnvironment() }).catch(() => {});
+    if (!pushSupported()) {
+      void api.pushDiagnostic({ stage: 'unsupported', ...pushEnvironment() }).catch(() => {});
+      setNotificationState('unsupported');
+      setNotificationMessage(
+        iosNeedsHomeScreenInstall()
+          ? 'Install Remotty on the Home Screen, then open it from the icon.'
+          : 'Push notifications require HTTPS and browser support.',
+      );
+      return;
+    }
+    setNotificationState('busy');
+    try {
+      if (notificationState === 'on') {
+        const confirmed = window.confirm(
+          'Disable notifications?\n\nYou will no longer be notified when OpenCode needs your input.',
+        );
+        if (!confirmed) {
+          setNotificationState('on');
+          return;
+        }
+        const registration = await navigator.serviceWorker.ready;
+        const existing = await registration.pushManager.getSubscription();
+        if (!existing) {
+          setNotificationState('off');
+          return;
+        }
+        await api.unsubscribePush(existing.endpoint);
+        await existing.unsubscribe();
+        setNotificationState('off');
+        setNotificationMessage('Notifications disabled.');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      void api
+        .pushDiagnostic({ stage: 'permission-result', ...pushEnvironment() })
+        .catch(() => {});
+      if (permission !== 'granted') {
+        setNotificationState('denied');
+        setNotificationMessage('Notification permission was not granted.');
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const key = pushPublicKey ?? (await api.pushConfig()).publicKey;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey(key),
+      });
+      void api.pushDiagnostic({ stage: 'subscribed', ...pushEnvironment() }).catch(() => {});
+      await api.subscribePush(subscriptionInput(subscription));
+      setPushPublicKey(key);
+      setNotificationState('on');
+      setNotificationMessage('Notifications enabled for agent questions and permissions.');
+    } catch (error) {
+      void api
+        .pushDiagnostic({
+          stage: 'error',
+          ...pushEnvironment(),
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        })
+        .catch(() => {});
+      setNotificationState('error');
+      setNotificationMessage(
+        error instanceof Error ? error.message : 'Failed to update notifications.',
+      );
+    }
+  };
+
   const remove = async (id: string): Promise<void> => {
     setMenuFor(null);
     if (!window.confirm('Delete this session?')) return;
@@ -57,19 +188,50 @@ export default function Home() {
       {/* Header */}
       <header className="flex items-center justify-between px-5 pt-3 pb-2">
         <div className="flex items-center gap-2.5">
-          <img src="/icon.svg" alt="" className="h-8 w-8 rounded-lg" />
+          <img src={appAsset('icon.svg')} alt="" className="h-8 w-8 rounded-lg" />
           <h1 className="text-lg font-semibold text-zinc-100">remotty</h1>
         </div>
-        <span
-          className="flex items-center gap-1.5 text-[11px] text-zinc-500"
-          title={config ? config.platform : ''}
-        >
+        <div className="flex items-center gap-1">
           <span
-            className={`h-2 w-2 rounded-full ${reachable ? 'bg-emerald-400' : 'bg-red-500'}`}
-          />
-          {reachable ? 'connected' : 'offline'}
-        </span>
+            className="mr-1 flex items-center gap-1.5 text-[11px] text-zinc-500"
+            title={config ? config.platform : ''}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${reachable ? 'bg-emerald-400' : 'bg-red-500'}`}
+            />
+            {reachable ? 'connected' : 'offline'}
+          </span>
+          <button
+            onClick={() => void toggleNotifications()}
+            disabled={notificationState === 'checking' || notificationState === 'busy'}
+            className={`relative grid h-11 w-11 place-items-center rounded-full active:bg-white/5 disabled:opacity-40 ${
+              notificationState === 'on' ? 'text-accent' : 'text-zinc-500'
+            }`}
+            aria-label={
+              notificationState === 'on' ? 'Disable notifications' : 'Enable notifications'
+            }
+            title={
+              notificationState === 'on'
+                ? 'Notification settings · enabled'
+                : 'Notification settings · disabled'
+            }
+          >
+            <IconBell className="h-5 w-5" />
+            {notificationState === 'on' && (
+              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" />
+            )}
+          </button>
+        </div>
       </header>
+
+      {notificationMessage && (
+        <button
+          onClick={() => setNotificationMessage(null)}
+          className="mx-4 mb-1 rounded-xl border border-white/5 bg-raised px-3 py-2 text-left text-xs leading-relaxed text-zinc-300"
+        >
+          {notificationMessage}
+        </button>
+      )}
 
       {/* Lista sessioni */}
       <main className="min-h-0 flex-1 overflow-y-auto px-4 pb-28">

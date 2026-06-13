@@ -7,6 +7,7 @@ import Login from './views/Login';
 import Home from './views/Home';
 import Chat from './views/Chat';
 import Term from './views/Term';
+import { appAsset } from './lib/base-path';
 
 export default function App() {
   const authed = useStore((s) => s.authed);
@@ -42,7 +43,11 @@ export default function App() {
     return (
       <div className="grid h-full place-items-center">
         <div className="flex flex-col items-center gap-3">
-          <img src="/icon.svg" alt="" className="h-14 w-14 animate-pulse rounded-2xl" />
+          <img
+            src={appAsset('icon.svg')}
+            alt=""
+            className="h-14 w-14 animate-pulse rounded-2xl"
+          />
           <span className="text-xs text-zinc-600">connecting to server…</span>
         </div>
       </div>

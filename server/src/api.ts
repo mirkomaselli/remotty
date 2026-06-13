@@ -8,6 +8,9 @@ import type {
   OpencodeAgentsResponse,
   OpencodePermissionLevel,
   OpencodeModelsResponse,
+  PushConfigResponse,
+  PushDiagnosticInput,
+  PushSubscriptionInput,
 } from '@remotty/shared';
 import { isDirectory, toServerConfig } from './config.js';
 import type { AppConfig } from './config.js';
@@ -17,6 +20,7 @@ import type { SessionManager } from './session-manager.js';
 import type { OpenCodeServer } from './opencode/server.js';
 import { createBrowseHandler } from './fs-browse.js';
 import { createLogger } from './logger.js';
+import type { PushService } from './push-service.js';
 
 export function createApiRouter(deps: {
   config: AppConfig;
@@ -24,8 +28,9 @@ export function createApiRouter(deps: {
   manager: SessionManager;
   auth: Auth;
   ocServer: OpenCodeServer;
+  push: PushService;
 }): Router {
-  const { config, store, manager, auth, ocServer } = deps;
+  const { config, store, manager, auth, ocServer, push } = deps;
   const logger = createLogger('api');
   const router = Router();
 
@@ -41,6 +46,40 @@ export function createApiRouter(deps: {
 
   router.get('/auth/me', (_req, res) => res.json({ ok: true }));
   router.get('/config', (_req, res) => res.json(toServerConfig(config)));
+  router.get('/push/config', (_req, res) => {
+    const body: PushConfigResponse = { supported: true, publicKey: push.publicKey() };
+    res.json(body);
+  });
+  router.post('/push/subscriptions', (req, res) => {
+    try {
+      push.subscribe(req.body as PushSubscriptionInput);
+      res.status(204).end();
+    } catch {
+      res.status(400).json({ error: 'invalid push subscription' });
+    }
+  });
+  router.delete('/push/subscriptions', (req, res) => {
+    const endpoint = (req.body as { endpoint?: unknown } | undefined)?.endpoint;
+    if (typeof endpoint !== 'string' || !endpoint.startsWith('https://')) {
+      res.status(400).json({ error: 'invalid push endpoint' });
+      return;
+    }
+    push.unsubscribe(endpoint);
+    res.status(204).end();
+  });
+  router.post('/push/diagnostics', (req, res) => {
+    const body = req.body as Partial<PushDiagnosticInput> | undefined;
+    if (!body || typeof body.stage !== 'string') {
+      res.status(400).json({ error: 'invalid push diagnostic' });
+      return;
+    }
+    logger.info(
+      `push diagnostic stage=${cleanLog(body.stage)} secure=${body.secureContext === true} ` +
+        `standalone=${body.standalone === true} permission=${cleanLog(body.permission)} ` +
+        `error=${cleanLog(body.errorName)}:${cleanLog(body.errorMessage)}`,
+    );
+    res.status(204).end();
+  });
   router.get('/fs/browse', createBrowseHandler(config));
 
   router.get('/projects', (_req, res) => res.json(store.getProjects()));
@@ -320,6 +359,10 @@ function compareAgents(a: { name: string }, b: { name: string }): number {
   if (ai === -1) return 1;
   if (bi === -1) return -1;
   return ai - bi;
+}
+
+function cleanLog(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/[\r\n]/g, ' ').slice(0, 200) : '-';
 }
 
 /** Wraps an async handler so rejections reach the error middleware. */

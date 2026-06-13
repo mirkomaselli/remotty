@@ -8,10 +8,14 @@ import type {
   OpencodeAgentsResponse,
   OpencodeModelsResponse,
   ProjectInfo,
+  PushConfigResponse,
+  PushDiagnosticInput,
+  PushSubscriptionInput,
   ServerConfig,
   SessionMeta,
 } from '@remotty/shared';
 import { useStore } from '../store';
+import { appUrl } from './base-path';
 
 export class ApiError extends Error {
   constructor(
@@ -24,7 +28,7 @@ export class ApiError extends Error {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(appUrl(path), {
     credentials: 'include',
     ...init,
     headers: {
@@ -76,4 +80,20 @@ export const api = {
     req<OpencodeAgentsResponse>(
       `/api/opencode/agents${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''}`,
     ),
+  pushConfig: () => req<PushConfigResponse>('/api/push/config'),
+  subscribePush: (subscription: PushSubscriptionInput) =>
+    req<void>('/api/push/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(subscription),
+    }),
+  unsubscribePush: (endpoint: string) =>
+    req<void>('/api/push/subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
+  pushDiagnostic: (diagnostic: PushDiagnosticInput) =>
+    req<void>('/api/push/diagnostics', {
+      method: 'POST',
+      body: JSON.stringify(diagnostic),
+    }),
 };

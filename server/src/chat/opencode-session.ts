@@ -801,6 +801,7 @@ export class OpenCodeChatSession extends BaseChatSession {
       case 'permission.asked': {
         const id = p['id'];
         if (typeof id !== 'string') break;
+        if (this.pendingPerms.has(id)) break;
         this.pendingPerms.add(id);
         const always = Array.isArray(p['always'])
           ? (p['always'] as unknown[]).filter((x): x is string => typeof x === 'string')

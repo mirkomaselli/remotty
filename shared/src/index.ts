@@ -271,6 +271,29 @@ export interface OpencodeAgentsResponse {
   agents: OpencodeAgentEntry[];
 }
 
+export interface PushConfigResponse {
+  supported: boolean;
+  publicKey: string;
+}
+
+export interface PushSubscriptionInput {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface PushDiagnosticInput {
+  stage: string;
+  secureContext: boolean;
+  standalone: boolean;
+  permission?: 'default' | 'denied' | 'granted' | 'unavailable';
+  errorName?: string;
+  errorMessage?: string;
+}
+
 export interface HealthResponse {
   ok: boolean;
   version: string;

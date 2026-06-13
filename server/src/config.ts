@@ -8,6 +8,8 @@ import type { ServerConfig } from '@remotty/shared';
 export interface AppConfig {
   port: number;
   host: string;
+  /** Public URL prefix used by the web app, for example /remotty. */
+  basePath: string;
   dataDir: string;
   /** dataDir/chat — per-session JSONL event logs live here. */
   chatDir: string;
@@ -40,6 +42,7 @@ export function loadConfig(): AppConfig {
   return {
     port: parsePort(process.env.PORT) ?? 7710,
     host: process.env.HOST || '0.0.0.0',
+    basePath: normalizeBasePath(process.env.REMOTTY_BASE_PATH || '/remotty'),
     dataDir,
     chatDir,
     authToken: process.env.REMOTTY_AUTH_TOKEN?.trim() || null,
@@ -53,6 +56,12 @@ export function loadConfig(): AppConfig {
       opencode: cliOnPath('opencode'),
     },
   };
+}
+
+function normalizeBasePath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '/') return '';
+  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
 }
 
 export function toServerConfig(c: AppConfig): ServerConfig {

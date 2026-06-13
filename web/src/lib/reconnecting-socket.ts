@@ -3,6 +3,7 @@
 // (i browser mobile uccidono i socket al blocco schermo: è la norma).
 
 import type { ConnState } from '../store';
+import { BASE_PATH } from './base-path';
 
 interface Opts {
   url: string;
@@ -108,5 +109,5 @@ export class ReconnectingSocket {
 
 export function wsBase(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}`;
+  return `${proto}//${location.host}${BASE_PATH}`;
 }

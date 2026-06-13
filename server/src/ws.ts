@@ -14,7 +14,7 @@ const WS_PATH = /^\/api\/sessions\/([^/]+)\/ws$/;
 
 export function setupWebSocket(
   server: Server,
-  deps: { auth: Auth; manager: SessionManager; store: Store },
+  deps: { auth: Auth; manager: SessionManager; store: Store; basePath?: string },
 ): void {
   const { auth, manager, store } = deps;
   const logger = createLogger('ws');
@@ -24,7 +24,11 @@ export function setupWebSocket(
   server.on('upgrade', (req, socket, head) => {
     try {
       const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
-      const match = WS_PATH.exec(pathname);
+      const normalizedPath =
+        deps.basePath && pathname.startsWith(`${deps.basePath}/`)
+          ? pathname.slice(deps.basePath.length)
+          : pathname;
+      const match = WS_PATH.exec(normalizedPath);
       if (!match) {
         reject(socket, 404, 'Not Found');
         return;

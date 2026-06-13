@@ -55,9 +55,11 @@ async function json(method, p, body) {
   return { status: res.status, headers: res.headers, data };
 }
 
-function wsConnect(sessionId) {
+function wsConnect(sessionId, basePath = '') {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${PORT}/api/sessions/${sessionId}/ws`);
+    const ws = new WebSocket(
+      `ws://localhost:${PORT}${basePath}/api/sessions/${sessionId}/ws`,
+    );
     ws.binaryType = 'nodebuffer';
     const t = setTimeout(() => reject(new Error('ws connect timeout')), 10_000);
     ws.once('open', () => {
@@ -156,6 +158,21 @@ async function main() {
   // (b) config
   const cfg = await json('GET', '/api/config');
   assert(cfg.status === 200 && typeof cfg.data?.clis?.opencode === 'boolean', 'b. GET /api/config clis', JSON.stringify(cfg.data?.clis));
+  const prefixedCfg = await json('GET', '/remotty/api/config');
+  assert(
+    prefixedCfg.status === 200 && typeof prefixedCfg.data?.clis?.opencode === 'boolean',
+    'b. GET /remotty/api/config',
+  );
+  const pushCfg = await json('GET', '/api/push/config');
+  assert(
+    pushCfg.status === 200 &&
+      pushCfg.data?.supported === true &&
+      typeof pushCfg.data?.publicKey === 'string' &&
+      pushCfg.data.publicKey.length > 20,
+    'b. GET /api/push/config',
+  );
+  const invalidPush = await json('POST', '/api/push/subscriptions', { endpoint: 'invalid' });
+  assert(invalidPush.status === 400, 'b. invalid push subscription rejected');
 
   // (c) fs browse: roots, poi dentro una root
   const roots = await json('GET', '/api/fs/browse');
@@ -210,7 +227,7 @@ async function main() {
   assert(chat.status === 201 && chat.data?.status === 'created', 'e. POST sessione chat → created', `status=${chat.data?.status}`);
   const chatId = chat.data.id;
 
-  const cws = await wsConnect(chatId);
+  const cws = await wsConnect(chatId, '/remotty');
   try {
     const attachedSeen = waitFor(
       cws,
@@ -239,9 +256,15 @@ async function main() {
   assert(delChat.status === 204, 'e. DELETE sessione chat → 204', `status=${delChat.status}`);
 
   // (f) web app statica
-  const home = await fetch(`${BASE}/`);
+  const root = await fetch(`${BASE}/`, { redirect: 'manual' });
+  assert(
+    root.status === 302 && root.headers.get('location') === '/remotty/',
+    'f. GET / redirects to /remotty/',
+    `status=${root.status} location=${root.headers.get('location')}`,
+  );
+  const home = await fetch(`${BASE}/remotty/`);
   const ct = home.headers.get('content-type') || '';
-  assert(home.status === 200 && ct.includes('text/html'), 'f. GET / → 200 text/html', `status=${home.status} ct=${ct}`);
+  assert(home.status === 200 && ct.includes('text/html'), 'f. GET /remotty/ → 200 text/html', `status=${home.status} ct=${ct}`);
 }
 
 main()

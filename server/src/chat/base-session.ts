@@ -23,6 +23,7 @@ export interface BaseChatDeps {
   log: EventLog;
   /** Persist meta (bumps updatedAt) — wired to the store via SessionManager. */
   onMetaChanged: (meta: SessionMeta) => void;
+  onEvent?: (meta: SessionMeta, event: ChatEvent) => void;
   logger: Logger;
 }
 
@@ -35,6 +36,7 @@ export abstract class BaseChatSession implements ChatHandle {
   protected readonly meta: SessionMeta;
   protected readonly log: EventLog;
   protected readonly onMetaChanged: (meta: SessionMeta) => void;
+  private readonly onEvent: ((meta: SessionMeta, event: ChatEvent) => void) | undefined;
   protected readonly logger: Logger;
 
   private readonly sockets = new Set<WebSocket>();
@@ -46,6 +48,7 @@ export abstract class BaseChatSession implements ChatHandle {
     this.meta = deps.meta;
     this.log = deps.log;
     this.onMetaChanged = deps.onMetaChanged;
+    this.onEvent = deps.onEvent;
     this.logger = deps.logger;
   }
 
@@ -111,6 +114,7 @@ export abstract class BaseChatSession implements ChatHandle {
       }
       this.sendTo(ws, data);
     }
+    this.onEvent?.(this.meta, ev);
   }
 
   protected sendTo(ws: WebSocket, data: string): void {

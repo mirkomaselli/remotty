@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useStore } from '../store';
+import { appAsset } from '../lib/base-path';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export default function Login() {
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 pt-safe pb-safe">
-      <img src="/icon.svg" alt="" className="mb-5 h-16 w-16 rounded-2xl" />
+      <img src={appAsset('icon.svg')} alt="" className="mb-5 h-16 w-16 rounded-2xl" />
       <h1 className="text-lg font-semibold text-zinc-100">remotty</h1>
       <p className="mt-1 mb-8 text-sm text-zinc-500">Enter your access token</p>
       <form onSubmit={submit} className="w-full max-w-sm space-y-3">

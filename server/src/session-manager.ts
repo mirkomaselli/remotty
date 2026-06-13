@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { CreateSessionRequest, SessionMeta } from '@remotty/shared';
+import type { ChatEvent, CreateSessionRequest, SessionMeta } from '@remotty/shared';
 import type { ChatHandle } from './chat/base-session.js';
 import { OpenCodeChatSession } from './chat/opencode-session.js';
 import { EventLog } from './chat/event-log.js';
@@ -9,6 +9,7 @@ import type { AppConfig } from './config.js';
 import type { OpenCodeServer } from './opencode/server.js';
 import type { Store } from './store.js';
 import { createLogger } from './logger.js';
+import type { PushService } from './push-service.js';
 
 /**
  * Owns the id → live-handle maps. Terminal sessions spawn at create time;
@@ -25,6 +26,7 @@ export class SessionManager {
     private readonly store: Store,
     private readonly config: AppConfig,
     private readonly ocServer: OpenCodeServer,
+    private readonly push: PushService,
   ) {}
 
   createSession(req: CreateSessionRequest): SessionMeta {
@@ -86,6 +88,7 @@ export class SessionManager {
         log: this.getEventLog(meta.id),
         config: this.config,
         onMetaChanged: (m: SessionMeta) => this.persistMeta(m),
+        onEvent: (m: SessionMeta, event: ChatEvent) => this.onChatEvent(m, event),
         logger: createLogger(scope('oc', meta.id)),
         ocServer: this.ocServer,
       });
@@ -135,6 +138,14 @@ export class SessionManager {
     if (!this.store.getSession(meta.id)) return;
     meta.updatedAt = new Date().toISOString();
     this.store.upsertSession(meta);
+  }
+
+  private onChatEvent(meta: SessionMeta, event: ChatEvent): void {
+    if (event.type === 'permission_request') {
+      void this.push.notifyInputRequired(meta, 'permission');
+    } else if (event.type === 'question_request') {
+      void this.push.notifyInputRequired(meta, 'question');
+    }
   }
 }
 

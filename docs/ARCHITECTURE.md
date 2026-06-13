@@ -195,15 +195,20 @@ backoff + jitter, app-level ping every 25 s; chat reconnect sends `attach` with 
 terminal reconnect just reattaches (server replays snapshot). Acquire `navigator.wakeLock`
 (feature-detected) while a chat run is `running`.
 
-PWA: `manifest.webmanifest` (standalone, dark theme color, SVG icon) + minimal pass-through
-service worker registered only `if (window.isSecureContext)` (over plain LAN HTTP, SW/install
-are unavailable — fine).
+PWA: `manifest.webmanifest` (standalone, dark theme color, SVG icon) + service worker for Web
+Push delivery, notification clicks and app icon badging. The server generates VAPID keys on first
+start and persists keys/subscriptions in `data/push.json`; authenticated REST endpoints register
+and revoke subscriptions. `permission_request` and `question_request` trigger generic,
+non-sensitive notifications that deep-link to the relevant chat. Service workers and Push remain
+available only in secure contexts. The web app defaults to the `/remotty` base path (configurable
+with `REMOTTY_BASE_PATH` at build and runtime), including SPA routing, REST, WebSocket, manifest,
+assets and notification links, so multiple apps can share one Tailscale Serve hostname.
 
 ## Designed for, not built (yet)
 
 - More chat adapters behind the same `ChatHandle` seam (e.g. `codex app-server` JSON-RPC over
   stdio). Any agent CLI works today via the terminal view.
-- ntfy push notifications on `permission_request` / `result` (one HTTP POST server-side).
+- Optional alternative notification transports such as ntfy.
 
 ## Known platform gotchas
 

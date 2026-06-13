@@ -93,6 +93,10 @@ iOS does not normally show an automatic PWA installation prompt. Open remotty ov
 Safari**, tap **Share**, then choose **Add to Home Screen** (and enable **Open as Web App** if
 shown). Opening the site inside another app's embedded browser may hide this option.
 
+Push notifications require iOS/iPadOS 16.4 or later, HTTPS, and the Home Screen installation.
+Open Remotty from its installed icon, then tap the bell on the Home screen and allow notifications.
+VAPID keys and browser subscriptions are generated automatically and stored in `data/push.json`.
+
 ## Tailscale (recommended)
 
 With Tailscale on both PC and phone you get valid HTTPS (installable PWA, reliable wake lock and
@@ -101,11 +105,43 @@ clipboard) without opening any ports:
 ```bash
 # bind local only, then expose via Tailscale Serve
 HOST=127.0.0.1 npm start
-tailscale serve --bg --https=443 7710
+tailscale serve --bg --https=443 --set-path=/remotty \
+  http://127.0.0.1:7710/remotty
 ```
 
-The app becomes reachable at `https://<machine-name>.<tailnet>.ts.net` from any device on your
-tailnet. Keep `REMOTTY_AUTH_TOKEN` set anyway.
+The app becomes reachable at `https://<machine-name>.<tailnet>.ts.net/remotty/` from any device
+on your tailnet. Other local apps can use different paths on the same HTTPS hostname. Keep
+`REMOTTY_AUTH_TOKEN` set anyway.
+
+On the first run, Tailscale may print an authorization URL asking the tailnet owner to enable
+**Serve**. Enable Serve only. **Do not enable Funnel**: Serve keeps Remotty private to authenticated
+devices in your tailnet, while Funnel would publish it to the public Internet.
+
+The macOS App Store version may not install `tailscale` in the shell `PATH`. In that case use:
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale serve \
+  --bg --https=443 --set-path=/remotty \
+  http://127.0.0.1:7710/remotty
+```
+
+Verify the active proxy and find the HTTPS address with:
+
+```bash
+tailscale serve status
+```
+
+After enabling Serve, remove any Remotty icon previously installed from an `http://` address.
+Open the new `https://<machine-name>.<tailnet>.ts.net/remotty/` address in Safari, add it to the
+Home Screen again, open that installed icon, and enable notifications from the bell.
+
+Remotty defaults to the `/remotty` base path. To use a different path, set the same value while
+building and running:
+
+```bash
+REMOTTY_BASE_PATH=/coding npm run build
+REMOTTY_BASE_PATH=/coding npm start
+```
 
 ## OpenCode chat
 
@@ -129,6 +165,9 @@ talks to it over HTTP + SSE; sessions are scoped per project folder.
   directly from the mobile composer. Up to 6 files, 20 MB each and 40 MB total per message.
   File contents are forwarded to OpenCode but are not persisted in Remotty's chat event log.
   Model input capabilities are shown in the picker, and incompatible media is blocked before send.
+- **Push notifications**: enable them from the bell on the Home screen to be notified when
+  OpenCode asks a question or waits for permission. Notifications contain no prompt or tool
+  details and open the relevant chat directly.
 - **Context controls** (chat ⋮ menu): *clear context* starts a fresh agent session under the
   hood (UI history stays), *compact context* summarizes the conversation to free context
   (like `/compact`).
